@@ -23,18 +23,6 @@ jobs:
         uses: actions/checkout@v7.0.1
       - name: Set up SSH known_hosts
         run: |
-          if [ -z "$SSH_HOST" ]; then
-            echo "ERROR: SSH_HOST is not set."
-            exit 1
-          fi
-          if [ -z "$SSH_USERNAME" ]; then
-            echo "ERROR: SSH_USERNAME is not set."
-            exit 1
-          fi
-          if [ -z "$SSH_PRIVATE_KEY_B64" ]; then
-            echo "ERROR: SSH_PRIVATE_KEY_B64 secret is not set."
-            exit 1
-          fi
           mkdir -p ~/.ssh
           printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
