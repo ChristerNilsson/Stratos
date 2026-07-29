@@ -9,23 +9,41 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
       - name: Set up SSH known_hosts
         run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "ERROR: SSH_HOST secret is not set. Add it in GitHub Secrets."
+            exit 1
+          fi
+          if [ -z "$SSH_USERNAME" ]; then
+            echo "ERROR: SSH_USERNAME secret is not set. Add it in GitHub Secrets."
+            exit 1
+          fi
+          if [ -z "$SSH_PASSWORD" ]; then
+            echo "ERROR: SSH_PASSWORD secret is not set. Add it in GitHub Secrets."
+            exit 1
+          fi
           mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS (SCP with password)
         uses: appleboy/scp-action@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ env.SSH_HOST }}
+          username: ${{ env.SSH_USERNAME }}
+          password: ${{ env.SSH_PASSWORD }}
+          port: ${{ env.SSH_PORT }}
           source: "./"
-          target: ${{ secrets.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
+          target: ${{ env.SSH_REMOTE_DIR }}
           rm: true
           debug: true
 
