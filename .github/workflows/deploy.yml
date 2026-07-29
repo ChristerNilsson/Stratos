@@ -9,6 +9,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: production
     env:
       SSH_HOST: ${{ vars.SSH_HOST || '212.227.48.64' }}
       SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
