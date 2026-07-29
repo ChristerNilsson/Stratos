@@ -14,7 +14,6 @@ jobs:
       SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
       SSH_PASSWORD: ${{ vars.SSH_PASSWORD || '' }}
       SSH_PRIVATE_KEY: ${{ vars.SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY || '' }}
-      SSH_KEY_PATH: ''
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
       SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
@@ -30,22 +29,18 @@ jobs:
             echo "ERROR: SSH_USERNAME is not set."
             exit 1
           fi
-          mkdir -p ~/.ssh
-          if [ -n "$SSH_PRIVATE_KEY" ]; then
-            printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-            echo "SSH_KEY_PATH=$HOME/.ssh/id_rsa" >> "$GITHUB_ENV"
-          else
-            ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
-            echo "SSH_KEY_PATH=$HOME/.ssh/id_ed25519" >> "$GITHUB_ENV"
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "ERROR: SSH_PRIVATE_KEY is not set. Add it as a GitHub Secret or Repository Variable."
+            exit 1
           fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS (SSH/SCP)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass
-          sshpass -p "$SSH_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SSH_PORT" -r ./ "$SSH_USERNAME@$SSH_HOST:$SSH_REMOTE_DIR"
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -P "$SSH_PORT" -r ./ "$SSH_USERNAME@$SSH_HOST:$SSH_REMOTE_DIR"
 
       - name: Remove local excluded files
         run: |
