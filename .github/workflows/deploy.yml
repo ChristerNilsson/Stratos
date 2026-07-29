@@ -13,11 +13,11 @@ jobs:
       name: production
       url: https://kribban.se
     env:
-      SSH_HOST: ${{ vars.SSH_HOST || '212.227.48.64' }}
-      SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USERNAME: ${{ secrets.SSH_USERNAME}}
       SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
-      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
-      SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      SSH_REMOTE_DIR: ${{ secrets.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
