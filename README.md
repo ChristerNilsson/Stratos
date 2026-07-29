@@ -4,41 +4,54 @@ Detta repo innehåller den statiska webbplatsen för kribban.se, a.kribban.se oc
 
 ## Publicering till STRATO
 
-När ändringar pushas till huvudgrenen main kommer GitHub Actions automatiskt att ladda upp webbplatsen till STRATO med FTP.
+När ändringar pushas till huvudgrenen `main` kommer GitHub Actions automatiskt att ladda upp webbplatsen till din STRATO VPS via SSH/SCP.
 
 ### Nödvändiga GitHub-hemligheter
 
 Skapa dessa hemligheter i GitHub Repository Settings > Secrets and variables > Actions:
 
-- STRATO_FTP_HOST
-- STRATO_FTP_USERNAME
-- STRATO_FTP_PASSWORD
+- `SSH_HOST` — serverns IP eller host (t.ex. `212.227.48.64`)
+- `SSH_USERNAME` — användaren på VPS (t.ex. `root` eller en deploy-användare)
+- `SSH_PASSWORD` — SSH-lösenordet om du använder lösenordsautentisering
 
-Valfritt:
+Alternativt kan du använda nyckelbaserad autentisering:
 
-- STRATO_FTP_PORT (standard 21)
-- STRATO_FTP_SERVER_DIR (standard /)
-
-Eftersom du använder en STRATO VPS Linux rekommenderas SSH/SCP istället för FTP. De GitHub Secrets du bör lägga in är:
-
-- `SSH_HOST` — serverns IP eller host (t.ex. 212.227.48.64)
-- `SSH_USERNAME` — användaren på VPS (t.ex. `root` eller din deploy-användare)
 - `SSH_PRIVATE_KEY` — din privata SSH-nyckel (hela nyckeltexten)
-
-Alternativ: lösenordsbaserad autentisering
-
-- `SSH_PASSWORD` — om du vill använda lösenordsautentisering istället för nyckel. Workflow-exemplet i `.github/workflows/deploy.yml` kan använda `SSH_PASSWORD` (lösenord) istället för `SSH_PRIVATE_KEY`.
 
 Säkerhets- och serverinställningar för lösenordsinloggning:
 
 - I `/etc/ssh/sshd_config` måste `PasswordAuthentication yes` vara satt och sedan starta om SSH: `sudo systemctl restart sshd`.
-- Öppna brandväggsporten (vanligtvis 22) om den är stängd.
+- Öppna brandväggsporten (vanligtvis `22`) om den är stängd.
 - Lösenordsautentisering är mindre säker än nyckelbaserad — rekommenderat: använd `SSH_PRIVATE_KEY` om möjligt.
 
 Valfritt som variabler:
 
 - `SSH_PORT` — (standard `22`)
 - `SSH_REMOTE_DIR` — målmappen på servern (t.ex. `/var/www/kribban.se`)
+
+## Var hamnar filerna?
+
+Workflowen i `.github/workflows/deploy.yml` kopierar hela repositoryt (`./`) till målmappen som anges i `SSH_REMOTE_DIR`. Om denna variabel inte är satt används standarden `/var/www/kribban.se`.
+
+Det betyder att filerna placeras så här på servern:
+
+- `/var/www/kribban.se/index.html`
+- `/var/www/kribban.se/a/index.html`
+- `/var/www/kribban.se/b/index.html`
+
+Om du inte ser `index.html` på servern:
+
+1. Kontrollera att GitHub Actions-run lyckades utan fel.
+2. Kontrollera att `SSH_REMOTE_DIR` pekar på samma katalog som din Nginx-root använder.
+3. Kontrollera serverns kataloginnehåll med SSH:
+
+```bash
+ssh $SSH_USERNAME@$SSH_HOST "ls -l /var/www/kribban.se /var/www/kribban.se/a /var/www/kribban.se/b"
+```
+
+4. Kontrollera Nginx-konfigurationen så att den använder samma rotmapp.
+
+Om Nginx fortfarande visar "Welcome to nginx!" betyder det ofta att den kör standardserverblocket, inte ditt site-block.
 
 ## DNS och subdomäner
 

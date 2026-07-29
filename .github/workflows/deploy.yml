@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Set up SSH known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS (SCP with password)
-        uses: appleboy/scp-action@v0.1.4
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
@@ -26,7 +26,6 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           source: "./"
           target: ${{ secrets.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
-          recursive: true
           rm: true
 
       - name: Remove local excluded files
