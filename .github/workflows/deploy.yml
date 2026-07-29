@@ -12,9 +12,7 @@ jobs:
     env:
       SSH_HOST: ${{ vars.SSH_HOST || '212.227.48.64' }}
       SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
-      SSH_PASSWORD: ${{ vars.SSH_PASSWORD || '' }}
-      SSH_PRIVATE_KEY: ${{ vars.SSH_PRIVATE_KEY || vars.GITHUB_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY || '' }}
-      SSH_PRIVATE_KEY_B64: ${{ vars.SSH_PRIVATE_KEY_B64 || secrets.SSH_PRIVATE_KEY_B64 || '' }}
+      SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
       SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
@@ -30,19 +28,14 @@ jobs:
             echo "ERROR: SSH_USERNAME is not set."
             exit 1
           fi
-          if [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$SSH_PRIVATE_KEY_B64" ]; then
-            echo "ERROR: set SSH_PRIVATE_KEY (multiline) or SSH_PRIVATE_KEY_B64 (base64)."
+          if [ -z "$SSH_PRIVATE_KEY_B64" ]; then
+            echo "ERROR: SSH_PRIVATE_KEY_B64 secret is not set."
             exit 1
           fi
           mkdir -p ~/.ssh
-          if [ -n "$SSH_PRIVATE_KEY_B64" ]; then
-            printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
-          else
-            # Support both multiline keys and single-line keys containing literal \n.
-            printf '%s' "$SSH_PRIVATE_KEY" | perl -pe 's/\\n/\n/g; s/\r//g' > ~/.ssh/id_rsa
-          fi
+          printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1 || { echo "ERROR: SSH_PRIVATE_KEY is not a valid private key format."; exit 1; }
+          ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1 || { echo "ERROR: Decoded key is invalid. Check SSH_PRIVATE_KEY_B64."; exit 1; }
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS (SSH/SCP)
