@@ -13,6 +13,7 @@ jobs:
       SSH_HOST: ${{ vars.SSH_HOST || '212.227.48.64' }}
       SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
       SSH_PASSWORD: ${{ vars.SSH_PASSWORD || '' }}
+      SSH_PRIVATE_KEY: ${{ vars.SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY || '' }}
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
       SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
@@ -28,11 +29,15 @@ jobs:
             echo "ERROR: SSH_USERNAME is not set."
             exit 1
           fi
-          if [ -z "$SSH_PASSWORD" ]; then
-            echo "ERROR: SSH_PASSWORD is not set. Add it as a GitHub Secret or Repository Variable."
+          if [ -z "$SSH_PASSWORD" ] && [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "ERROR: neither SSH_PASSWORD nor SSH_PRIVATE_KEY is set. Add one of them in GitHub Secrets/Variables."
             exit 1
           fi
           mkdir -p ~/.ssh
+          if [ -n "$SSH_PRIVATE_KEY" ]; then
+            printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+          fi
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy files to VPS (SCP with password)
@@ -41,6 +46,7 @@ jobs:
           host: ${{ env.SSH_HOST }}
           username: ${{ env.SSH_USERNAME }}
           password: ${{ env.SSH_PASSWORD }}
+          key: ${{ env.SSH_PRIVATE_KEY }}
           port: ${{ env.SSH_PORT }}
           source: "./"
           target: ${{ env.SSH_REMOTE_DIR }}
