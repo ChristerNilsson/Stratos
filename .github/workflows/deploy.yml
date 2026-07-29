@@ -10,9 +10,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
-      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+      SSH_USERNAME: ${{ secrets.SSH_USERNAME || vars.SSH_USERNAME }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD || vars.SSH_PASSWORD }}
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
       SSH_REMOTE_DIR: ${{ vars.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
     steps:
@@ -21,15 +21,15 @@ jobs:
       - name: Set up SSH known_hosts
         run: |
           if [ -z "$SSH_HOST" ]; then
-            echo "ERROR: SSH_HOST secret is not set. Add it in GitHub Secrets."
+            echo "ERROR: SSH_HOST is not set. Add it as a GitHub Secret or Repository Variable."
             exit 1
           fi
           if [ -z "$SSH_USERNAME" ]; then
-            echo "ERROR: SSH_USERNAME secret is not set. Add it in GitHub Secrets."
+            echo "ERROR: SSH_USERNAME is not set. Add it as a GitHub Secret or Repository Variable."
             exit 1
           fi
           if [ -z "$SSH_PASSWORD" ]; then
-            echo "ERROR: SSH_PASSWORD secret is not set. Add it in GitHub Secrets."
+            echo "ERROR: SSH_PASSWORD is not set. Add it as a GitHub Secret or Repository Variable."
             exit 1
           fi
           mkdir -p ~/.ssh
