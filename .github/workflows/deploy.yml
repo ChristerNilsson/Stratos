@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
+      url: https://kribban.se
     env:
       SSH_HOST: ${{ vars.SSH_HOST || '212.227.48.64' }}
       SSH_USERNAME: ${{ vars.SSH_USERNAME || 'root' }}
