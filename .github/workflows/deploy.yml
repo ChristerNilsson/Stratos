@@ -27,6 +27,7 @@ jobs:
           source: "./"
           target: ${{ secrets.SSH_REMOTE_DIR || '/var/www/kribban.se' }}
           rm: true
+          debug: true
 
       - name: Remove local excluded files
         run: |
