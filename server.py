@@ -2,7 +2,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from fasthtml.common import Button, H1, Main, P, Title, fast_app, serve
+from fasthtml.common import Button, H1, Main, P, Script, Title, fast_app, serve
 
 app, rt = fast_app()
 DB_PATH = Path(
@@ -21,6 +21,17 @@ def init_db():
             """
         )
         db.execute("INSERT OR IGNORE INTO counter (id, value) VALUES (1, 0)")
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                ),
+                message TEXT NOT NULL
+            )
+            """
+        )
 
 
 def get_counter():
@@ -29,9 +40,10 @@ def get_counter():
         return row[0]
 
 
-def increment_counter():
+def increment_counter(message):
     with sqlite3.connect(DB_PATH, timeout=10) as db:
         db.execute("UPDATE counter SET value = value + 1 WHERE id = 1")
+        db.execute("INSERT INTO log (message) VALUES (?)", (message,))
         row = db.execute("SELECT value FROM counter WHERE id = 1").fetchone()
         return row[0]
 
@@ -43,22 +55,59 @@ init_db()
 def get():
     return (
         Title("Counter"),
+        Script(
+            """
+            function incrementWithLocation(button) {
+                if (!navigator.geolocation) {
+                    alert("Webbläsaren saknar stöd för GPS-position.");
+                    return;
+                }
+
+                button.disabled = true;
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const coords = position.coords;
+                        const message =
+                            `WGS84 lat=${coords.latitude.toFixed(7)}, ` +
+                            `lon=${coords.longitude.toFixed(7)}, ` +
+                            `accuracy=${coords.accuracy.toFixed(1)}m`;
+
+                        htmx.ajax("POST", "/increment", {
+                            target: "#counter",
+                            swap: "outerHTML",
+                            values: {message: message}
+                        }).finally(() => {
+                            button.disabled = false;
+                        });
+                    },
+                    (error) => {
+                        button.disabled = false;
+                        alert(`Kunde inte läsa GPS-positionen: ${error.message}`);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            }
+            """
+        ),
         Main(
             H1("Hej, världen!"),
             P(str(get_counter()), id="counter"),
             Button(
-                "Räkna upp",
-                hx_post="/increment",
-                hx_target="#counter",
-                hx_swap="outerHTML",
+                "Räkna upp och spara position",
+                type="button",
+                onclick="incrementWithLocation(this)",
             ),
         ),
     )
 
 
 @rt("/increment")
-def post():
-    return P(str(increment_counter()), id="counter")
+def post(message: str):
+    return P(str(increment_counter(message)), id="counter")
 
 
 if __name__ == "__main__":
