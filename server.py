@@ -9,7 +9,7 @@ def get():
     return (
         Title("Counter"),
         Main(
-            H1("Hello, world!"),
+            H1("Hej, världen!"),
             P(str(counter), id="counter"),
             Button(
                 "Räkna upp",
