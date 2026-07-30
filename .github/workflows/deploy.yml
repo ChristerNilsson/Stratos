@@ -63,13 +63,9 @@ jobs:
           chmod 640 .sesskey
 
           sudo install -m 0644 kribban-a.service /etc/systemd/system/kribban-a.service
-          sudo install -m 0644 nginx-vhost.conf /etc/nginx/sites-available/kribban.se
-          sudo ln -sfn /etc/nginx/sites-available/kribban.se /etc/nginx/sites-enabled/kribban.se
 
           sudo systemctl daemon-reload
-          sudo nginx -t
           sudo systemctl enable kribban-a
           sudo systemctl restart kribban-a
           sudo systemctl is-active --quiet kribban-a
-          sudo systemctl reload nginx
           REMOTE
