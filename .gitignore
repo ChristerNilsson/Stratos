@@ -2,7 +2,7 @@ __pycache__/
 *.py[cod]
 .sesskey
 .venv/
-counter.db
-counter.db-journal
-counter.db-shm
-counter.db-wal
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
