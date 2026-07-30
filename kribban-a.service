@@ -1,0 +1,15 @@
+[Unit]
+Description=FastHTML application for a.kribban.se
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/kribban.se
+ExecStart=/var/www/kribban.se/.venv/bin/python /var/www/kribban.se/server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
