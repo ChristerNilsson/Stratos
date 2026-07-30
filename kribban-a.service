@@ -7,6 +7,8 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/kribban.se
+Environment=COUNTER_DB_PATH=/var/lib/kribban-a/counter.db
+StateDirectory=kribban-a
 ExecStart=/var/www/kribban.se/.venv/bin/python /var/www/kribban.se/server.py
 Restart=on-failure
 RestartSec=5
