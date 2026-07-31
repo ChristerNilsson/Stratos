@@ -518,7 +518,16 @@ def admin_style():
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
         .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
         .row-action { display: inline; margin: 0; }
-        .row-action input { padding: .25rem .4rem; }
+        .icon-action, .row-action input {
+            display: inline-block;
+            border: 0;
+            background: transparent;
+            padding: .2rem .35rem;
+            font-size: 1.15rem;
+            line-height: 1;
+            text-decoration: none;
+            cursor: pointer;
+        }
         .admin-section { overflow-x: auto; }
         """
     )
@@ -619,8 +628,8 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Thead(Tr(Th("ID"), Th("Namn"), Th("Telefon"), Th("E-post"), Th("Kommandon"))),
         Tbody(*(Tr(
             Td(p["id"]), Td(p["namn"]), Td(p["telefon"]), Td(p["mail"]),
-            Td(A("Redigera", href=f'/admin?edit_spelare={p["id"]}#spelare'), " ", Form(
-                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="Ta bort"),
+            Td(A("✏️", href=f'/admin?edit_spelare={p["id"]}#spelare', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
+                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/spelare/delete", cls="row-action"))
         ) for p in players)),
     )
@@ -635,8 +644,8 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     location_table = Table(
         Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Storlek"), Th("Kommandon"))),
         Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(p["storlek"]), Td(
-            A("Redigera", href=f'/admin?edit_plats={p["id"]}#platser'), " ", Form(
-                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="Ta bort"),
+            A("✏️", href=f'/admin?edit_plats={p["id"]}#platser', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
+                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
     )
     sg = selected_game
@@ -656,8 +665,8 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Thead(Tr(Th("ID"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
         Tbody(*(Tr(Td(g["id"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
             A("Drag", href=f'/admin/parti/{g["id"]}'), " · ",
-            A("Redigera", href=f'/admin?edit_parti={g["id"]}#partier'), " ", Form(
-                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="Ta bort"),
+            A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
+                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/parti/delete", cls="row-action"))) for g in games)),
     )
     return Title("Admin"), admin_style(), Script(
