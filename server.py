@@ -522,11 +522,22 @@ def admin_style():
             -webkit-appearance: none;
         }
         table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
-        th, td { border: 1px solid #aaa; padding: .2rem .4rem; text-align: left; }
+        table th, table td {
+            border: 1px solid #aaa;
+            padding: .1rem .3rem !important;
+            line-height: 1.1;
+            text-align: left;
+        }
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
         .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
         td:last-child { white-space: nowrap; }
         .row-action { display: inline-block; margin: 0; }
+        .row-action input {
+            width: auto;
+            height: 1.25rem;
+            min-height: 0;
+            margin: 0 !important;
+        }
         .icon-action, .row-action input {
             display: inline-block;
             border: 0;
