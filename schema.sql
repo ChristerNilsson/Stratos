@@ -45,8 +45,8 @@ CREATE INDEX IF NOT EXISTS drag_parti_idx ON drag(parti_id, nummer);
 
 -- Exempeldata för det parti som visas i klienten.
 INSERT OR IGNORE INTO spelare (id, namn, telefon, mail) VALUES
-  (1, 'Maja Lind', '+46 70 123 45 67', 'maja@example.se'),
-  (2, 'Erik Holm', '+46 70 987 65 43', 'erik@example.se');
+  (1, 'Sture Stolpe', '+46 70 123 45 67', 'sture@example.se'),
+  (2, 'Örjan Kärrsgård', '+46 70 987 65 43', 'orjan@example.se');
 
 INSERT OR IGNORE INTO plats (id, latitud, longitud, storlek) VALUES
   (1, 59.26996327, 18.14979067, 800);
