@@ -517,7 +517,8 @@ def admin_style():
         th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
         .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
-        .row-action { display: inline; margin: 0; }
+        td:last-child { white-space: nowrap; }
+        .row-action { display: inline-block; margin: 0; }
         .icon-action, .row-action input {
             display: inline-block;
             border: 0;
