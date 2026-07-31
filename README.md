@@ -1,6 +1,6 @@
 # Stratos
 
-Detta repo innehåller den statiska webbplatsen för kribban.se, a.kribban.se och b.kribban.se.
+Detta repo innehåller filer för kribban.se (Python-app bakom Nginx) samt statiska sidor för a.kribban.se och b.kribban.se.
 
 ## Publicering till STRATO
 
