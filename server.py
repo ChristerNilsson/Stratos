@@ -485,8 +485,14 @@ def get(parti: int = 1, spelare: int = 1):
         ),
         Style(
             """
+            html, body { height: 100%; overflow: hidden; }
             body { margin: 0; }
-            main { width: min(100vw, 260px); margin: 0 auto; }
+            main {
+                width: min(100vw, 260px);
+                height: 100dvh;
+                margin: 0 auto;
+                overflow: hidden;
+            }
             @media (max-width: 600px) {
                 main { width: 100vw; }
             }
