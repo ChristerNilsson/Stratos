@@ -64,6 +64,7 @@ def init_db():
 
     migrate_location_schema()
     ensure_location_name_schema()
+    ensure_game_date_schema()
     ensure_clock_schema()
     ensure_real_clock_schema()
 
@@ -98,6 +99,8 @@ def migrate_location_schema():
 
             CREATE TABLE parti_new (
               id          INTEGER PRIMARY KEY,
+              datum       TEXT NOT NULL DEFAULT (date('now'))
+                          CHECK (datum = date(datum)),
               plats_id    INTEGER NOT NULL REFERENCES plats(id),
               rotation    INTEGER NOT NULL DEFAULT 0
                           CHECK (rotation IN (0, 1, 2, 3)),
@@ -163,6 +166,15 @@ def ensure_location_name_schema():
         )
 
 
+def ensure_game_date_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(parti)")}
+        if "datum" in columns:
+            return
+        db.execute("ALTER TABLE parti ADD COLUMN datum TEXT")
+        db.execute("UPDATE parti SET datum = date('now') WHERE datum IS NULL")
+
+
 def ensure_clock_schema():
     with sqlite3.connect(DB_PATH) as db:
         columns = {
@@ -218,6 +230,8 @@ def ensure_real_clock_schema():
 
             CREATE TABLE parti_real_tid (
               id          INTEGER PRIMARY KEY,
+              datum       TEXT NOT NULL DEFAULT (date('now'))
+                          CHECK (datum = date(datum)),
               plats_id    INTEGER NOT NULL REFERENCES plats(id),
               rotation    INTEGER NOT NULL DEFAULT 0
                           CHECK (rotation IN (0, 1, 2, 3)),
@@ -239,11 +253,11 @@ def ensure_real_clock_schema():
             );
 
             INSERT INTO parti_real_tid (
-              id, plats_id, rotation, vit_id, svart_id, inkrement,
+              id, datum, plats_id, rotation, vit_id, svart_id, inkrement,
               vit_tid, svart_tid, senast_startad, status
             )
             SELECT
-              id, plats_id, rotation, vit_id, svart_id, inkrement,
+              id, datum, plats_id, rotation, vit_id, svart_id, inkrement,
               CAST(vit_tid AS REAL), CAST(svart_tid AS REAL),
               CAST(senast_startad AS REAL), status
             FROM parti;
@@ -671,6 +685,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     sg = selected_game
     game_editor = Form(
         Input(type="hidden", name="id", value=sg["id"] if sg else 0),
+        Label("Datum", Input(type="date", name="datum", value=sg["datum"] if sg else time.strftime("%Y-%m-%d"), required=True)),
         Label("Plats", Select(*location_options(sg["plats_id"] if sg else None), name="plats_id")),
         Label("Rotation", Select(*(Option(str(x), value=x, selected=bool(sg and x == sg["rotation"])) for x in range(4)), name="rotation")),
         Label("Vit", Select(*player_options(sg["vit_id"] if sg else None), name="vit_id")),
@@ -682,8 +697,8 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Input(type="submit", value="Spara ändringar" if sg else "Lägg till"), method="post", action="/admin/parti/save",
     )
     game_table = Table(
-        Thead(Tr(Th("ID"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
-        Tbody(*(Tr(Td(g["id"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
+        Thead(Tr(Th("ID"), Th("Datum"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
+        Tbody(*(Tr(Td(g["id"]), Td(g["datum"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
             A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
@@ -755,12 +770,12 @@ def post(session, id: int):
 
 
 @rt("/admin/parti/save")
-def post(session, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, status: str, id: int = 0):
+def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, status: str, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        values = (plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, time.time(), status)
-        if id: db.execute("UPDATE parti SET plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
-        else: db.execute("INSERT INTO parti(plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?)", values)
+        values = (datum, plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, time.time(), status)
+        if id: db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
+        else: db.execute("INSERT INTO parti(datum,plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?,?)", values)
     return admin_redirect("partier")
 
 
@@ -778,7 +793,7 @@ def get(session, parti_id: int):
     with admin_connection() as db:
         info = db.execute(
             """
-            SELECT vit.namn, svart.namn, parti.status, plats.namn
+            SELECT vit.namn, svart.namn, parti.status, plats.namn, parti.datum
             FROM parti
             JOIN spelare vit ON vit.id = parti.vit_id
             JOIN spelare svart ON svart.id = parti.svart_id
@@ -799,6 +814,7 @@ def get(session, parti_id: int):
     pgn_game.headers["Site"] = info[3]
     pgn_game.headers["White"] = info[0]
     pgn_game.headers["Black"] = info[1]
+    pgn_game.headers["Date"] = info[4].replace("-", ".")
     result = {"vit vinst": "1-0", "svart vinst": "0-1", "remi": "1/2-1/2"}.get(info[2], "*")
     pgn_game.headers["Result"] = result
     board = pgn_game.board()
