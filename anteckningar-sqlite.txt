@@ -1,12 +1,1 @@
-# Kopiera databasen 
-sudo sqlite3 /var/lib/kribban/counter.db ".backup '/tmp/counter-inspect.db'"
-
-# Hämta kopian
-scp root@212.227.48.64:/tmp/counter-inspect.db .
-# Använd DB Browser for SQLite att inspektera tabellerna
-
-# Eller kör ett kommando på servern
-sudo sqlite3 /var/lib/kribban/counter.db "SELECT id, value FROM counter;"
-sudo sqlite3 -readonly /var/lib/kribban/counter.db "SELECT id, timestamp, message FROM log ORDER BY id DESC;"
-
-
+# Använd /db för att inspektera databasen i /var/lib/kribban/chess.db
