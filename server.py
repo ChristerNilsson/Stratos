@@ -487,6 +487,9 @@ def get(parti: int = 1, spelare: int = 1):
             """
             body { margin: 0; }
             main { width: min(100vw, 260px); margin: 0 auto; }
+            @media (max-width: 600px) {
+                main { width: 100vw; }
+            }
             .player {
                 display: flex;
                 align-items: baseline;
