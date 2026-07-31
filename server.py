@@ -522,7 +522,7 @@ def admin_style():
             -webkit-appearance: none;
         }
         table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
-        th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
+        th, td { border: 1px solid #aaa; padding: .2rem .4rem; text-align: left; }
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
         .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
         td:last-child { white-space: nowrap; }
@@ -531,8 +531,8 @@ def admin_style():
             display: inline-block;
             border: 0;
             background: transparent;
-            padding: .2rem .35rem;
-            font-size: 1.15rem;
+            padding: .1rem .25rem;
+            font-size: 1rem;
             line-height: 1;
             text-decoration: none;
             cursor: pointer;
