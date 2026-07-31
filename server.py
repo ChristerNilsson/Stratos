@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import chess
+import chess.pgn
 from fasthtml.common import (
     A,
     Div,
@@ -32,7 +33,7 @@ from fasthtml.common import (
     fast_app,
     serve,
 )
-from starlette.responses import RedirectResponse
+from starlette.responses import PlainTextResponse, RedirectResponse
 from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
 
@@ -500,7 +501,7 @@ def admin_connection():
     return db
 
 
-def admin_redirect(section="oversikt"):
+def admin_redirect(section="spelare"):
     return RedirectResponse(f"/admin#{section}", status_code=303)
 
 
@@ -508,11 +509,18 @@ def admin_style():
     return Style(
         """
         main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
-        #admin-nav { display: grid; gap: .35rem; max-width: 24rem; margin-bottom: 1.5rem; }
-        #admin-nav select { font-size: 1.1rem; }
+        #admin-nav { display: flex; gap: .35rem; margin-bottom: 1.5rem; border-bottom: 2px solid #bbb; }
+        .admin-tab { padding: .65rem 1rem; text-decoration: none; border-radius: .4rem .4rem 0 0; }
+        .admin-tab.active { color: white; background: #246; }
         .admin-section[hidden] { display: none; }
         form { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin: .75rem 0; }
         input, select, button { padding: .5rem; }
+        input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            margin: 0;
+            -webkit-appearance: none;
+        }
         table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
         th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
@@ -560,7 +568,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     if not admin_allowed(session):
         return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        players = db.execute("SELECT * FROM spelare ORDER BY namn").fetchall()
+        players = db.execute("SELECT * FROM spelare ORDER BY id").fetchall()
         locations = db.execute("SELECT * FROM plats ORDER BY id").fetchall()
         games = db.execute(
             """
@@ -568,7 +576,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             FROM parti
             JOIN spelare vit ON vit.id=parti.vit_id
             JOIN spelare svart ON svart.id=parti.svart_id
-            ORDER BY parti.id DESC
+            ORDER BY parti.id
             """
         ).fetchall()
 
@@ -665,7 +673,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     game_table = Table(
         Thead(Tr(Th("ID"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
         Tbody(*(Tr(Td(g["id"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
-            A("Drag", href=f'/admin/parti/{g["id"]}'), " · ",
+            A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/parti/delete", cls="row-action"))) for g in games)),
@@ -673,24 +681,26 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     return Title("Admin"), admin_style(), Script(
         """
         document.addEventListener("DOMContentLoaded", () => {
-            const selector = document.getElementById("admin-table");
+            const tabs = document.querySelectorAll(".admin-tab");
             const sections = document.querySelectorAll(".admin-section");
             function showSection(name) {
                 sections.forEach((section) => {
                     section.hidden = section.dataset.section !== name;
                 });
-                selector.value = name;
+                tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
                 history.replaceState(null, "", `#${name}`);
             }
-            selector.addEventListener("change", () => showSection(selector.value));
+            tabs.forEach((tab) => tab.addEventListener("click", (event) => {
+                event.preventDefault();
+                showSection(tab.dataset.tab);
+            }));
             const initial = location.hash.slice(1);
-            showSection([...selector.options].some((o) => o.value === initial) ? initial : "oversikt");
+            showSection([...tabs].some((tab) => tab.dataset.tab === initial) ? initial : "spelare");
         });
         """
     ), Main(
         H1("Administration"),
-        Label("Välj tabell", Select(Option("Översikt", value="oversikt"), Option("Spelare", value="spelare"), Option("Platser", value="platser"), Option("Partier", value="partier"), id="admin-table"), id="admin-nav"),
-        Div(H2("Pågående partier"), *(P(A(f'Parti {g["id"]}: {g["vit_namn"]}–{g["svart_namn"]}', href=f'/admin/parti/{g["id"]}')) for g in games if g["status"] == "pågår"), cls="admin-section", data_section="oversikt"),
+        Div(A("Spelare", href="#spelare", cls="admin-tab", data_tab="spelare"), A("Platser", href="#platser", cls="admin-tab", data_tab="platser"), A("Partier", href="#partier", cls="admin-tab", data_tab="partier"), id="admin-nav"),
         Div(H2("Spelare"), player_editor, player_table, cls="admin-section", data_section="spelare"),
         Div(H2("Platser"), location_editor, location_table, cls="admin-section", data_section="platser"),
         Div(H2("Partier"), game_editor, game_table, cls="admin-section", data_section="partier"),
@@ -748,6 +758,54 @@ def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db: db.execute("DELETE FROM parti WHERE id=?", (id,))
     return admin_redirect("partier")
+
+
+@rt("/admin/parti/{parti_id}/pgn")
+def get(session, parti_id: int):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        info = db.execute(
+            """
+            SELECT vit.namn, svart.namn, parti.status, plats.namn
+            FROM parti
+            JOIN spelare vit ON vit.id = parti.vit_id
+            JOIN spelare svart ON svart.id = parti.svart_id
+            JOIN plats ON plats.id = parti.plats_id
+            WHERE parti.id = ?
+            """,
+            (parti_id,),
+        ).fetchone()
+        if info is None:
+            return PlainTextResponse("Partiet hittades inte.", status_code=404)
+        moves = db.execute(
+            "SELECT franruta, tillruta FROM drag WHERE parti_id=? ORDER BY nummer",
+            (parti_id,),
+        ).fetchall()
+
+    pgn_game = chess.pgn.Game()
+    pgn_game.headers["Event"] = f"Parti {parti_id}"
+    pgn_game.headers["Site"] = info[3]
+    pgn_game.headers["White"] = info[0]
+    pgn_game.headers["Black"] = info[1]
+    result = {"vit vinst": "1-0", "svart vinst": "0-1", "remi": "1/2-1/2"}.get(info[2], "*")
+    pgn_game.headers["Result"] = result
+    board = pgn_game.board()
+    node = pgn_game
+    for source, target in moves:
+        uci = source + target
+        piece = board.piece_at(chess.parse_square(source))
+        if piece and piece.piece_type == chess.PAWN and target[1] in ("1", "8"):
+            uci += "q"
+        move = chess.Move.from_uci(uci)
+        node = node.add_variation(move)
+        board.push(move)
+    text = pgn_game.accept(chess.pgn.StringExporter(headers=True, variations=False, comments=False))
+    return PlainTextResponse(
+        text + "\n",
+        media_type="application/x-chess-pgn",
+        headers={"Content-Disposition": f'attachment; filename="parti-{parti_id}.pgn"'},
+    )
 
 
 @rt("/admin/parti/{parti_id}")
