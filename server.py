@@ -62,6 +62,7 @@ def init_db():
             db.executescript(schema)
 
     migrate_location_schema()
+    ensure_location_name_schema()
     ensure_clock_schema()
     ensure_real_clock_schema()
 
@@ -81,6 +82,7 @@ def migrate_location_schema():
 
             CREATE TABLE plats (
               id         INTEGER PRIMARY KEY,
+              namn       TEXT NOT NULL DEFAULT '',
               latitud    REAL NOT NULL,
               longitud   REAL NOT NULL,
               storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
@@ -90,6 +92,8 @@ def migrate_location_schema():
             INSERT INTO plats (latitud, longitud, storlek)
             SELECT DISTINCT latitud, longitud, storlek
             FROM parti;
+
+            UPDATE plats SET namn = 'Plats ' || id;
 
             CREATE TABLE parti_new (
               id          INTEGER PRIMARY KEY,
@@ -137,6 +141,23 @@ def migrate_location_schema():
             ALTER TABLE parti_new RENAME TO parti;
 
             COMMIT;
+            """
+        )
+
+
+def ensure_location_name_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(plats)")}
+        if "namn" in columns:
+            return
+        db.execute("ALTER TABLE plats ADD COLUMN namn TEXT NOT NULL DEFAULT ''")
+        db.execute(
+            """
+            UPDATE plats
+            SET namn = CASE
+                WHEN id = 1 THEN 'Skarpnäck 800'
+                ELSE 'Plats ' || id
+            END
             """
         )
 
@@ -555,6 +576,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     location_forms = [
         Form(
             Input(type="hidden", name="id", value=p["id"]),
+            Input(name="namn", value=p["namn"], required=True),
             Input(type="number", step="any", name="latitud", value=p["latitud"], required=True),
             Input(type="number", step="any", name="longitud", value=p["longitud"], required=True),
             Input(type="number", step="any", name="storlek", value=p["storlek"], required=True),
@@ -564,7 +586,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         ) for p in locations
     ]
     player_options = lambda selected: [Option(p["namn"], value=p["id"], selected=p["id"] == selected) for p in players]
-    location_options = lambda selected: [Option(f'{p["id"]}: {p["latitud"]}, {p["longitud"]}', value=p["id"], selected=p["id"] == selected) for p in locations]
+    location_options = lambda selected: [Option(p["namn"], value=p["id"], selected=p["id"] == selected) for p in locations]
     game_forms = [
         Form(
             Input(type="hidden", name="id", value=g["id"]),
@@ -604,14 +626,15 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     )
     location_editor = Form(
         Input(type="hidden", name="id", value=selected_location["id"] if selected_location else 0),
+        Label("Namn", Input(name="namn", value=selected_location["namn"] if selected_location else "", required=True)),
         Label("Latitud", Input(type="number", step="any", name="latitud", value=selected_location["latitud"] if selected_location else "", required=True)),
         Label("Longitud", Input(type="number", step="any", name="longitud", value=selected_location["longitud"] if selected_location else "", required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"), method="post", action="/admin/plats/save",
     )
     location_table = Table(
-        Thead(Tr(Th("ID"), Th("Latitud"), Th("Longitud"), Th("Storlek"), Th("Kommandon"))),
-        Tbody(*(Tr(Td(p["id"]), Td(p["latitud"]), Td(p["longitud"]), Td(p["storlek"]), Td(
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Storlek"), Th("Kommandon"))),
+        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(p["storlek"]), Td(
             A("Redigera", href=f'/admin?edit_plats={p["id"]}#platser'), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="Ta bort"),
                 method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
@@ -685,11 +708,11 @@ def post(session, id: int):
 
 
 @rt("/admin/plats/save")
-def post(session, latitud: float, longitud: float, storlek: float, id: int = 0):
+def post(session, namn: str, latitud: float, longitud: float, storlek: float, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        if id: db.execute("UPDATE plats SET latitud=?,longitud=?,storlek=? WHERE id=?", (latitud, longitud, storlek, id))
-        else: db.execute("INSERT INTO plats(latitud,longitud,storlek) VALUES(?,?,?)", (latitud, longitud, storlek))
+        if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,storlek=? WHERE id=?", (namn, latitud, longitud, storlek, id))
+        else: db.execute("INSERT INTO plats(namn,latitud,longitud,storlek) VALUES(?,?,?,?)", (namn, latitud, longitud, storlek))
     return admin_redirect("platser")
 
 

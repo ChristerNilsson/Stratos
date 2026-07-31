@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS spelare (
 
 CREATE TABLE IF NOT EXISTS plats (
   id         INTEGER PRIMARY KEY,
+  namn       TEXT NOT NULL,
   latitud    REAL NOT NULL,
   longitud   REAL NOT NULL,
   storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
@@ -48,8 +49,8 @@ INSERT OR IGNORE INTO spelare (id, namn, telefon, mail) VALUES
   (1, 'Sture Stolpe', '+46 70 123 45 67', 'sture@example.se'),
   (2, 'Örjan Kärrsgård', '+46 70 987 65 43', 'orjan@example.se');
 
-INSERT OR IGNORE INTO plats (id, latitud, longitud, storlek) VALUES
-  (1, 59.26996327, 18.14979067, 800);
+INSERT OR IGNORE INTO plats (id, namn, latitud, longitud, storlek) VALUES
+  (1, 'Skarpnäck 800', 59.26996327, 18.14979067, 800);
 
 INSERT OR IGNORE INTO parti (
   id, plats_id, rotation,
