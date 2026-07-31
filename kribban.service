@@ -8,6 +8,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/var/www/kribban.se
 Environment=CHESS_DB_PATH=/var/lib/kribban/chess.db
+EnvironmentFile=-/etc/kribban.env
 StateDirectory=kribban
 ExecStart=/var/www/kribban.se/.venv/bin/python /var/www/kribban.se/server.py
 Restart=on-failure

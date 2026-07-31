@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import os
 import sqlite3
 import time
@@ -7,14 +8,20 @@ from pathlib import Path
 
 import chess
 from fasthtml.common import (
+    A,
     Div,
+    Form,
     H1,
     H2,
     Link,
+    Input,
+    Label,
     Main,
     P,
+    Option,
     Script,
     Style,
+    Select,
     Table,
     Tbody,
     Td,
@@ -25,6 +32,7 @@ from fasthtml.common import (
     fast_app,
     serve,
 )
+from starlette.responses import RedirectResponse
 from starlette.routing import WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
 
@@ -34,6 +42,7 @@ SCHEMA_PATH = APP_DIR / "schema.sql"
 DB_PATH = Path(os.environ.get("CHESS_DB_PATH", APP_DIR / "chess.db"))
 game_connections = defaultdict(set)
 game_locks = defaultdict(asyncio.Lock)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
 
 def init_db():
@@ -457,6 +466,206 @@ def get_database_tables():
             columns = [column[0] for column in cursor.description]
             tables.append((table_name, columns, cursor.fetchall()))
         return tables
+
+
+def admin_allowed(session):
+    return session.get("admin") is True
+
+
+def admin_connection():
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys = ON")
+    return db
+
+
+def admin_redirect():
+    return RedirectResponse("/admin", status_code=303)
+
+
+def admin_style():
+    return Style(
+        """
+        main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
+        form { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
+        input, select, button { padding: .35rem; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
+        th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
+        .record { border-bottom: 1px solid #ccc; padding: .4rem 0; }
+        """
+    )
+
+
+@rt("/admin/login")
+def get():
+    return Title("Admin"), Main(
+        H1("Admin"),
+        Form(
+            Label("Lösenord", Input(type="password", name="password", required=True)),
+            Input(type="submit", value="Logga in"),
+            method="post",
+            action="/admin/login",
+        ),
+    )
+
+
+@rt("/admin/login")
+def post(password: str, session):
+    if ADMIN_PASSWORD and hmac.compare_digest(password, ADMIN_PASSWORD):
+        session["admin"] = True
+        return admin_redirect()
+    return Title("Admin"), Main(H1("Inloggningen misslyckades"), A("Försök igen", href="/admin/login"))
+
+
+@rt("/admin")
+def get(session):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        players = db.execute("SELECT * FROM spelare ORDER BY namn").fetchall()
+        locations = db.execute("SELECT * FROM plats ORDER BY id").fetchall()
+        games = db.execute(
+            """
+            SELECT parti.*, vit.namn AS vit_namn, svart.namn AS svart_namn
+            FROM parti
+            JOIN spelare vit ON vit.id=parti.vit_id
+            JOIN spelare svart ON svart.id=parti.svart_id
+            ORDER BY parti.id DESC
+            """
+        ).fetchall()
+
+    player_forms = [
+        Form(
+            Input(type="hidden", name="id", value=p["id"]),
+            Input(name="namn", value=p["namn"], required=True),
+            Input(name="telefon", value=p["telefon"], required=True),
+            Input(type="email", name="mail", value=p["mail"], required=True),
+            Input(type="submit", value="Spara"),
+            Input(type="submit", value="Ta bort", formaction="/admin/spelare/delete"),
+            method="post", action="/admin/spelare/save", cls="record",
+        ) for p in players
+    ]
+    location_forms = [
+        Form(
+            Input(type="hidden", name="id", value=p["id"]),
+            Input(type="number", step="any", name="latitud", value=p["latitud"], required=True),
+            Input(type="number", step="any", name="longitud", value=p["longitud"], required=True),
+            Input(type="number", step="any", name="storlek", value=p["storlek"], required=True),
+            Input(type="submit", value="Spara"),
+            Input(type="submit", value="Ta bort", formaction="/admin/plats/delete"),
+            method="post", action="/admin/plats/save", cls="record",
+        ) for p in locations
+    ]
+    player_options = lambda selected: [Option(p["namn"], value=p["id"], selected=p["id"] == selected) for p in players]
+    location_options = lambda selected: [Option(f'{p["id"]}: {p["latitud"]}, {p["longitud"]}', value=p["id"], selected=p["id"] == selected) for p in locations]
+    game_forms = [
+        Form(
+            Input(type="hidden", name="id", value=g["id"]),
+            Select(*location_options(g["plats_id"]), name="plats_id"),
+            Select(*(Option(str(x), value=x, selected=x == g["rotation"]) for x in range(4)), name="rotation"),
+            Select(*player_options(g["vit_id"]), name="vit_id"),
+            Select(*player_options(g["svart_id"]), name="svart_id"),
+            Input(type="number", name="inkrement", value=g["inkrement"], min=0),
+            Input(type="number", step="any", name="vit_tid", value=g["vit_tid"], min=0),
+            Input(type="number", step="any", name="svart_tid", value=g["svart_tid"], min=0),
+            Select(*(Option(x, selected=x == g["status"]) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status"),
+            Input(type="submit", value="Spara"),
+            A("Drag", href=f'/admin/parti/{g["id"]}'),
+            Input(type="submit", value="Ta bort", formaction="/admin/parti/delete"),
+            method="post", action="/admin/parti/save", cls="record",
+        ) for g in games
+    ]
+    return Title("Admin"), admin_style(), Main(
+        H1("Administration"),
+        H2("Pågående partier"),
+        *(P(A(f'Parti {g["id"]}: {g["vit_namn"]}–{g["svart_namn"]}', href=f'/admin/parti/{g["id"]}')) for g in games if g["status"] == "pågår"),
+        H2("Spelare"),
+        Form(Input(name="namn", placeholder="Namn", required=True), Input(name="telefon", placeholder="Telefon", required=True), Input(type="email", name="mail", placeholder="E-post", required=True), Input(type="submit", value="Skapa"), method="post", action="/admin/spelare/save"),
+        *player_forms,
+        H2("Platser"),
+        Form(Input(type="number", step="any", name="latitud", placeholder="Latitud", required=True), Input(type="number", step="any", name="longitud", placeholder="Longitud", required=True), Input(type="number", step="any", name="storlek", value="800", required=True), Input(type="submit", value="Skapa"), method="post", action="/admin/plats/save"),
+        *location_forms,
+        H2("Partier"),
+        Form(
+            Select(*location_options(None), name="plats_id"),
+            Select(*(Option(str(x), value=x) for x in range(4)), name="rotation"),
+            Select(*player_options(None), name="vit_id"), Select(*player_options(None), name="svart_id"),
+            Input(type="number", name="inkrement", value="0", min=0),
+            Input(type="number", step="any", name="vit_tid", value="5400", min=0),
+            Input(type="number", step="any", name="svart_tid", value="5400", min=0),
+            Select(*(Option(x) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status"),
+            Input(type="submit", value="Skapa"), method="post", action="/admin/parti/save",
+        ),
+        *game_forms,
+    )
+
+
+def require_admin(session):
+    return admin_allowed(session) or RedirectResponse("/admin/login", status_code=303)
+
+
+@rt("/admin/spelare/save")
+def post(session, namn: str, telefon: str, mail: str, id: int = 0):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        if id: db.execute("UPDATE spelare SET namn=?,telefon=?,mail=? WHERE id=?", (namn, telefon, mail, id))
+        else: db.execute("INSERT INTO spelare(namn,telefon,mail) VALUES(?,?,?)", (namn, telefon, mail))
+    return admin_redirect()
+
+
+@rt("/admin/spelare/delete")
+def post(session, id: int):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db: db.execute("DELETE FROM spelare WHERE id=?", (id,))
+    return admin_redirect()
+
+
+@rt("/admin/plats/save")
+def post(session, latitud: float, longitud: float, storlek: float, id: int = 0):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        if id: db.execute("UPDATE plats SET latitud=?,longitud=?,storlek=? WHERE id=?", (latitud, longitud, storlek, id))
+        else: db.execute("INSERT INTO plats(latitud,longitud,storlek) VALUES(?,?,?)", (latitud, longitud, storlek))
+    return admin_redirect()
+
+
+@rt("/admin/plats/delete")
+def post(session, id: int):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db: db.execute("DELETE FROM plats WHERE id=?", (id,))
+    return admin_redirect()
+
+
+@rt("/admin/parti/save")
+def post(session, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, status: str, id: int = 0):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        values = (plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, time.time(), status)
+        if id: db.execute("UPDATE parti SET plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
+        else: db.execute("INSERT INTO parti(plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?)", values)
+    return admin_redirect()
+
+
+@rt("/admin/parti/delete")
+def post(session, id: int):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db: db.execute("DELETE FROM parti WHERE id=?", (id,))
+    return admin_redirect()
+
+
+@rt("/admin/parti/{parti_id}")
+def get(session, parti_id: int, sida: int = 1):
+    if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    sida = max(1, sida); per_page = 20
+    with admin_connection() as db:
+        total = db.execute("SELECT COUNT(*) FROM drag WHERE parti_id=?", (parti_id,)).fetchone()[0]
+        moves = db.execute("SELECT nummer,franruta,tillruta FROM drag WHERE parti_id=? ORDER BY nummer LIMIT ? OFFSET ?", (parti_id, per_page, (sida-1)*per_page)).fetchall()
+    pages = max(1, (total + per_page - 1) // per_page)
+    return Title(f"Parti {parti_id}"), admin_style(), Main(
+        A("Till administration", href="/admin"), H1(f"Parti {parti_id}"),
+        Table(Thead(Tr(Th("Nr"), Th("Från"), Th("Till"))), Tbody(*(Tr(Td(m["nummer"]), Td(m["franruta"]), Td(m["tillruta"])) for m in moves))),
+        P(*(A(str(page), href=f"/admin/parti/{parti_id}?sida={page}") for page in range(1, pages+1))),
+    )
 
 
 @rt("/")

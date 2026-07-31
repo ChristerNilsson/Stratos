@@ -1,1 +1,40 @@
 # Använd /db för att inspektera databasen i /var/lib/kribban/chess.db
+
+Tabellen parti innehåller:
+
+status: väntar | pågår | pausat | avslutat | avbrutet
+resultat: NULL | vit | svart | remi
+orsak: schackmatt | tid | uppgivet | överenskommen remi | patt
+
+# Paus
+
+Eftersom spelet sker utomhus bör säkerhet gå före tävlingsmässig rättvisa. Jag rekommenderar två olika pausmekanismer:
+Vanlig paus: en spelare begär paus, motståndaren måste godkänna innan klockorna stannar.
+Nödpaus: endera spelaren kan stoppa båda klockorna omedelbart vid väder, skada, hot, djur eller annan säkerhetsrisk.
+Admin bör dessutom kunna:
+Pausa ett enskilt parti eller samtliga partier på en plats.
+Ange orsak.
+Återuppta eller avbryta partiet.
+Korrigera klockorna vid behov.
+Återupptagning efter nödpaus bör kräva båda spelarnas godkännande eller ett adminbeslut. En spelare ska alltså kunna stoppa spelet ensam vid fara, men inte ensam starta det igen.
+
+Lämpliga tillstånd:
+	väntar
+	pågår
+	paus begärd
+	pausat
+	avslutat
+	avbrutet
+
+Varje paus bör loggas separat med:
+
+	parti_id
+	tidpunkt
+	aktör
+	orsak
+	typ: vanlig | nödläge | admin
+	återupptagen_tid
+	återupptagen_av
+
+Det gör missbruk granskningsbart utan att tvinga spelare att fortsätta i en farlig situation. 
+En vanlig pausbegäran stoppar inte klockan förrän den godkänts; en nödpaus gör det omedelbart.
