@@ -7,6 +7,7 @@ sudo nano /etc/nginx/sites-available/kribban.se # startar redigering nginx.conf
 sudo nginx -t  # test av nginx.conf
 sudo systemctl reload nginx  # omstart av nginx
 
-
+sudo systemctl restart kribban
+sudo journalctl -u kribban -n 100 --no-pager
 
 
