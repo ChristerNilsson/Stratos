@@ -479,19 +479,23 @@ def admin_connection():
     return db
 
 
-def admin_redirect():
-    return RedirectResponse("/admin", status_code=303)
+def admin_redirect(section="oversikt"):
+    return RedirectResponse(f"/admin#{section}", status_code=303)
 
 
 def admin_style():
     return Style(
         """
         main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
-        form { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
-        input, select, button { padding: .35rem; }
+        #admin-nav { display: grid; gap: .35rem; max-width: 24rem; margin-bottom: 1.5rem; }
+        #admin-nav select { font-size: 1.1rem; }
+        .admin-section[hidden] { display: none; }
+        form { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin: .75rem 0; }
+        input, select, button { padding: .5rem; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
         th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
-        .record { border-bottom: 1px solid #ccc; padding: .4rem 0; }
+        .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
+        .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
         """
     )
 
@@ -575,28 +579,41 @@ def get(session):
             method="post", action="/admin/parti/save", cls="record",
         ) for g in games
     ]
-    return Title("Admin"), admin_style(), Main(
+    return Title("Admin"), admin_style(), Script(
+        """
+        document.addEventListener("DOMContentLoaded", () => {
+            const selector = document.getElementById("admin-table");
+            const sections = document.querySelectorAll(".admin-section");
+            function showSection(name) {
+                sections.forEach((section) => {
+                    section.hidden = section.dataset.section !== name;
+                });
+                selector.value = name;
+                history.replaceState(null, "", `#${name}`);
+            }
+            selector.addEventListener("change", () => showSection(selector.value));
+            const initial = location.hash.slice(1);
+            showSection([...selector.options].some((o) => o.value === initial) ? initial : "oversikt");
+        });
+        """
+    ), Main(
         H1("Administration"),
-        H2("Pågående partier"),
-        *(P(A(f'Parti {g["id"]}: {g["vit_namn"]}–{g["svart_namn"]}', href=f'/admin/parti/{g["id"]}')) for g in games if g["status"] == "pågår"),
-        H2("Spelare"),
-        Form(Input(name="namn", placeholder="Namn", required=True), Input(name="telefon", placeholder="Telefon", required=True), Input(type="email", name="mail", placeholder="E-post", required=True), Input(type="submit", value="Skapa"), method="post", action="/admin/spelare/save"),
-        *player_forms,
-        H2("Platser"),
-        Form(Input(type="number", step="any", name="latitud", placeholder="Latitud", required=True), Input(type="number", step="any", name="longitud", placeholder="Longitud", required=True), Input(type="number", step="any", name="storlek", value="800", required=True), Input(type="submit", value="Skapa"), method="post", action="/admin/plats/save"),
-        *location_forms,
-        H2("Partier"),
-        Form(
-            Select(*location_options(None), name="plats_id"),
-            Select(*(Option(str(x), value=x) for x in range(4)), name="rotation"),
-            Select(*player_options(None), name="vit_id"), Select(*player_options(None), name="svart_id"),
-            Input(type="number", name="inkrement", value="0", min=0),
-            Input(type="number", step="any", name="vit_tid", value="5400", min=0),
-            Input(type="number", step="any", name="svart_tid", value="5400", min=0),
-            Select(*(Option(x) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status"),
-            Input(type="submit", value="Skapa"), method="post", action="/admin/parti/save",
+        Label("Välj tabell", Select(Option("Översikt", value="oversikt"), Option("Spelare", value="spelare"), Option("Platser", value="platser"), Option("Partier", value="partier"), id="admin-table"), id="admin-nav"),
+        Div(H2("Pågående partier"), *(P(A(f'Parti {g["id"]}: {g["vit_namn"]}–{g["svart_namn"]}', href=f'/admin/parti/{g["id"]}')) for g in games if g["status"] == "pågår"), cls="admin-section", data_section="oversikt"),
+        Div(H2("Spelare"), Form(Input(name="namn", placeholder="Namn", required=True), Input(name="telefon", placeholder="Telefon", required=True), Input(type="email", name="mail", placeholder="E-post", required=True), Input(type="submit", value="Skapa spelare"), method="post", action="/admin/spelare/save"), *player_forms, cls="admin-section", data_section="spelare"),
+        Div(H2("Platser"), Form(Input(type="number", step="any", name="latitud", placeholder="Latitud", required=True), Input(type="number", step="any", name="longitud", placeholder="Longitud", required=True), Input(type="number", step="any", name="storlek", value="800", required=True), Input(type="submit", value="Skapa plats"), method="post", action="/admin/plats/save"), *location_forms, cls="admin-section", data_section="platser"),
+        Div(H2("Partier"), Form(
+            Select(*location_options(None), name="plats_id", aria_label="Plats"),
+            Select(*(Option(str(x), value=x) for x in range(4)), name="rotation", aria_label="Rotation"),
+            Select(*player_options(None), name="vit_id", aria_label="Vit spelare"), Select(*player_options(None), name="svart_id", aria_label="Svart spelare"),
+            Input(type="number", name="inkrement", value="0", min=0, aria_label="Inkrement"),
+            Input(type="number", step="any", name="vit_tid", value="5400", min=0, aria_label="Vit tid"),
+            Input(type="number", step="any", name="svart_tid", value="5400", min=0, aria_label="Svart tid"),
+            Select(*(Option(x) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status", aria_label="Status"),
+            Input(type="submit", value="Skapa parti"), method="post", action="/admin/parti/save",
         ),
         *game_forms,
+        cls="admin-section", data_section="partier"),
     )
 
 
@@ -610,14 +627,14 @@ def post(session, namn: str, telefon: str, mail: str, id: int = 0):
     with admin_connection() as db:
         if id: db.execute("UPDATE spelare SET namn=?,telefon=?,mail=? WHERE id=?", (namn, telefon, mail, id))
         else: db.execute("INSERT INTO spelare(namn,telefon,mail) VALUES(?,?,?)", (namn, telefon, mail))
-    return admin_redirect()
+    return admin_redirect("spelare")
 
 
 @rt("/admin/spelare/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db: db.execute("DELETE FROM spelare WHERE id=?", (id,))
-    return admin_redirect()
+    return admin_redirect("spelare")
 
 
 @rt("/admin/plats/save")
@@ -626,14 +643,14 @@ def post(session, latitud: float, longitud: float, storlek: float, id: int = 0):
     with admin_connection() as db:
         if id: db.execute("UPDATE plats SET latitud=?,longitud=?,storlek=? WHERE id=?", (latitud, longitud, storlek, id))
         else: db.execute("INSERT INTO plats(latitud,longitud,storlek) VALUES(?,?,?)", (latitud, longitud, storlek))
-    return admin_redirect()
+    return admin_redirect("platser")
 
 
 @rt("/admin/plats/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db: db.execute("DELETE FROM plats WHERE id=?", (id,))
-    return admin_redirect()
+    return admin_redirect("platser")
 
 
 @rt("/admin/parti/save")
@@ -643,14 +660,14 @@ def post(session, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkr
         values = (plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, time.time(), status)
         if id: db.execute("UPDATE parti SET plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
         else: db.execute("INSERT INTO parti(plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?)", values)
-    return admin_redirect()
+    return admin_redirect("partier")
 
 
 @rt("/admin/parti/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db: db.execute("DELETE FROM parti WHERE id=?", (id,))
-    return admin_redirect()
+    return admin_redirect("partier")
 
 
 @rt("/admin/parti/{parti_id}")
