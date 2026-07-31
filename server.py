@@ -38,11 +38,19 @@ game_locks = defaultdict(asyncio.Lock)
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not DB_PATH.exists():
+    with sqlite3.connect(DB_PATH) as db:
+        has_game_table = db.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'parti'
+            """
+        ).fetchone()
+
+    if not has_game_table:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         with sqlite3.connect(DB_PATH) as db:
             db.executescript(schema)
-        return
 
     migrate_location_schema()
     ensure_clock_schema()
