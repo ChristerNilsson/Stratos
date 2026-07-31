@@ -496,6 +496,9 @@ def admin_style():
         th, td { border: 1px solid #aaa; padding: .4rem; text-align: left; }
         .record { background: #f7f7f7; border: 1px solid #ddd; border-radius: .4rem; padding: .75rem; }
         .admin-section > form:first-of-type { border: 2px solid #8cb4d8; border-radius: .4rem; padding: .75rem; }
+        .row-action { display: inline; margin: 0; }
+        .row-action input { padding: .25rem .4rem; }
+        .admin-section { overflow-x: auto; }
         """
     )
 
@@ -522,7 +525,7 @@ def post(password: str, session):
 
 
 @rt("/admin")
-def get(session):
+def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0):
     if not admin_allowed(session):
         return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
@@ -579,6 +582,61 @@ def get(session):
             method="post", action="/admin/parti/save", cls="record",
         ) for g in games
     ]
+    selected_player = next((p for p in players if p["id"] == edit_spelare), None)
+    selected_location = next((p for p in locations if p["id"] == edit_plats), None)
+    selected_game = next((g for g in games if g["id"] == edit_parti), None)
+    player_editor = Form(
+        Input(type="hidden", name="id", value=selected_player["id"] if selected_player else 0),
+        Label("Namn", Input(name="namn", value=selected_player["namn"] if selected_player else "", required=True)),
+        Label("Telefon", Input(name="telefon", value=selected_player["telefon"] if selected_player else "", required=True)),
+        Label("E-post", Input(type="email", name="mail", value=selected_player["mail"] if selected_player else "", required=True)),
+        Input(type="submit", value="Spara ändringar" if selected_player else "Lägg till"),
+        method="post", action="/admin/spelare/save",
+    )
+    player_table = Table(
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Telefon"), Th("E-post"), Th("Kommandon"))),
+        Tbody(*(Tr(
+            Td(p["id"]), Td(p["namn"]), Td(p["telefon"]), Td(p["mail"]),
+            Td(A("Redigera", href=f'/admin?edit_spelare={p["id"]}#spelare'), " ", Form(
+                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="Ta bort"),
+                method="post", action="/admin/spelare/delete", cls="row-action"))
+        ) for p in players)),
+    )
+    location_editor = Form(
+        Input(type="hidden", name="id", value=selected_location["id"] if selected_location else 0),
+        Label("Latitud", Input(type="number", step="any", name="latitud", value=selected_location["latitud"] if selected_location else "", required=True)),
+        Label("Longitud", Input(type="number", step="any", name="longitud", value=selected_location["longitud"] if selected_location else "", required=True)),
+        Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
+        Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"), method="post", action="/admin/plats/save",
+    )
+    location_table = Table(
+        Thead(Tr(Th("ID"), Th("Latitud"), Th("Longitud"), Th("Storlek"), Th("Kommandon"))),
+        Tbody(*(Tr(Td(p["id"]), Td(p["latitud"]), Td(p["longitud"]), Td(p["storlek"]), Td(
+            A("Redigera", href=f'/admin?edit_plats={p["id"]}#platser'), " ", Form(
+                Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="Ta bort"),
+                method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
+    )
+    sg = selected_game
+    game_editor = Form(
+        Input(type="hidden", name="id", value=sg["id"] if sg else 0),
+        Label("Plats", Select(*location_options(sg["plats_id"] if sg else None), name="plats_id")),
+        Label("Rotation", Select(*(Option(str(x), value=x, selected=bool(sg and x == sg["rotation"])) for x in range(4)), name="rotation")),
+        Label("Vit", Select(*player_options(sg["vit_id"] if sg else None), name="vit_id")),
+        Label("Svart", Select(*player_options(sg["svart_id"] if sg else None), name="svart_id")),
+        Label("Inkrement", Input(type="number", name="inkrement", value=sg["inkrement"] if sg else 0, min=0)),
+        Label("Vit tid", Input(type="number", step="any", name="vit_tid", value=sg["vit_tid"] if sg else 5400, min=0)),
+        Label("Svart tid", Input(type="number", step="any", name="svart_tid", value=sg["svart_tid"] if sg else 5400, min=0)),
+        Label("Status", Select(*(Option(x, selected=bool(sg and x == sg["status"])) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status")),
+        Input(type="submit", value="Spara ändringar" if sg else "Lägg till"), method="post", action="/admin/parti/save",
+    )
+    game_table = Table(
+        Thead(Tr(Th("ID"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
+        Tbody(*(Tr(Td(g["id"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
+            A("Drag", href=f'/admin/parti/{g["id"]}'), " · ",
+            A("Redigera", href=f'/admin?edit_parti={g["id"]}#partier'), " ", Form(
+                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="Ta bort"),
+                method="post", action="/admin/parti/delete", cls="row-action"))) for g in games)),
+    )
     return Title("Admin"), admin_style(), Script(
         """
         document.addEventListener("DOMContentLoaded", () => {
@@ -600,20 +658,9 @@ def get(session):
         H1("Administration"),
         Label("Välj tabell", Select(Option("Översikt", value="oversikt"), Option("Spelare", value="spelare"), Option("Platser", value="platser"), Option("Partier", value="partier"), id="admin-table"), id="admin-nav"),
         Div(H2("Pågående partier"), *(P(A(f'Parti {g["id"]}: {g["vit_namn"]}–{g["svart_namn"]}', href=f'/admin/parti/{g["id"]}')) for g in games if g["status"] == "pågår"), cls="admin-section", data_section="oversikt"),
-        Div(H2("Spelare"), Form(Input(name="namn", placeholder="Namn", required=True), Input(name="telefon", placeholder="Telefon", required=True), Input(type="email", name="mail", placeholder="E-post", required=True), Input(type="submit", value="Skapa spelare"), method="post", action="/admin/spelare/save"), *player_forms, cls="admin-section", data_section="spelare"),
-        Div(H2("Platser"), Form(Input(type="number", step="any", name="latitud", placeholder="Latitud", required=True), Input(type="number", step="any", name="longitud", placeholder="Longitud", required=True), Input(type="number", step="any", name="storlek", value="800", required=True), Input(type="submit", value="Skapa plats"), method="post", action="/admin/plats/save"), *location_forms, cls="admin-section", data_section="platser"),
-        Div(H2("Partier"), Form(
-            Select(*location_options(None), name="plats_id", aria_label="Plats"),
-            Select(*(Option(str(x), value=x) for x in range(4)), name="rotation", aria_label="Rotation"),
-            Select(*player_options(None), name="vit_id", aria_label="Vit spelare"), Select(*player_options(None), name="svart_id", aria_label="Svart spelare"),
-            Input(type="number", name="inkrement", value="0", min=0, aria_label="Inkrement"),
-            Input(type="number", step="any", name="vit_tid", value="5400", min=0, aria_label="Vit tid"),
-            Input(type="number", step="any", name="svart_tid", value="5400", min=0, aria_label="Svart tid"),
-            Select(*(Option(x) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status", aria_label="Status"),
-            Input(type="submit", value="Skapa parti"), method="post", action="/admin/parti/save",
-        ),
-        *game_forms,
-        cls="admin-section", data_section="partier"),
+        Div(H2("Spelare"), player_editor, player_table, cls="admin-section", data_section="spelare"),
+        Div(H2("Platser"), location_editor, location_table, cls="admin-section", data_section="platser"),
+        Div(H2("Partier"), game_editor, game_table, cls="admin-section", data_section="partier"),
     )
 
 
