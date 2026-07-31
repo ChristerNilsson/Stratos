@@ -494,7 +494,11 @@ def get(parti: int = 1, spelare: int = 1):
                 overflow: hidden;
             }
             @media (max-width: 600px) {
-                main { width: 100vw; }
+                main {
+                    width: 100vw;
+                    box-sizing: border-box;
+                    padding: 0 1px;
+                }
             }
             .player {
                 display: flex;
