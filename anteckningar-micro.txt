@@ -1,0 +1,18 @@
+Man bör inte använda Terminalen i VS Code. Den knycker Ctrl-E
+
+| Tangent | Funktion |
+|---|---|
+
+| `Ctrl+C`         | Kopiera inom micro |
+| `Ctrl+X`         | Klipp ut markerad text eller aktuell rad |
+| `Ctrl+V`         | Klistra in |
+| `Ctrl+V`         | Klistra inom micro | (Krävde att Windows Terminals Paste ändrades till Ctrl+Shift+V)
+| `Ctrl+Shift+V`   | Klistra in från Windows urklipp.|
+| `Ctrl+Z`         | Ångra |
+
+| `Ctrl+F` | Sök |
+| `Ctrl+A` | Markera allt |
+
+| `Ctrl+S` | Spara filen |
+| `Ctrl+Q` | Avsluta |
+

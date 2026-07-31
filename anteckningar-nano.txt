@@ -1,12 +1,12 @@
 nano
 ====
 
-ctrl-o output  (därefter Enter)
+ctrl-o output  (dÃ¤refter Enter)
 ctrl-x exit
 
 Klippbordet
 ===========
 
-Högerklick <=> paste
+HÃ¶gerklick <=> paste
 
 

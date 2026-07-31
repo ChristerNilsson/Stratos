@@ -7,8 +7,6 @@ sudo nano /etc/nginx/sites-available/kribban.se # startar redigering nginx.conf
 sudo nginx -t  # test av nginx.conf
 sudo systemctl reload nginx  # omstart av nginx
 
-sudo sqlite3 /var/lib/kribban-a/counter.db "SELECT id, value FROM counter;"
-sudo sqlite3 -readonly /var/lib/kribban-a/counter.db "SELECT id, timestamp, message FROM log ORDER BY id DESC;"
 
 
 

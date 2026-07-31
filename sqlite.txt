@@ -1,8 +1,0 @@
-# Kopiera databasen 
-sudo sqlite3 /var/lib/kribban-a/counter.db ".backup '/tmp/counter-inspect.db'"
-
-# Hämta kopian
-scp root@212.227.48.64:/tmp/counter-inspect.db .
-
-# Använd DB Browser for SQLite att inspektera tabellerna
-
