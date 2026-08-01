@@ -109,7 +109,7 @@ def migrate_location_schema():
                           CHECK (rotation IN (0, 1, 2, 3)),
               vit_id      INTEGER NOT NULL REFERENCES spelare(id),
               svart_id    INTEGER NOT NULL REFERENCES spelare(id),
-              inkrement   INTEGER NOT NULL DEFAULT 0 CHECK (inkrement >= 0),
+              inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
               vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
               svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
               senast_startad REAL NOT NULL DEFAULT (
@@ -254,7 +254,7 @@ def ensure_real_clock_schema():
                           CHECK (rotation IN (0, 1, 2, 3)),
               vit_id      INTEGER NOT NULL REFERENCES spelare(id),
               svart_id    INTEGER NOT NULL REFERENCES spelare(id),
-              inkrement   INTEGER NOT NULL DEFAULT 0 CHECK (inkrement >= 0),
+              inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
               vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
               svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
               senast_startad REAL NOT NULL DEFAULT (
@@ -715,7 +715,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Rotation", Select(*(Option(str(x), value=x, selected=bool(sg and x == sg["rotation"])) for x in range(4)), name="rotation")),
         Label("Vit", Select(*player_options(sg["vit_id"] if sg else None), name="vit_id")),
         Label("Svart", Select(*player_options(sg["svart_id"] if sg else None), name="svart_id")),
-        Label("Inkrement", Input(type="number", name="inkrement", value=sg["inkrement"] if sg else 0, min=0)),
+        Label("Inkrement", Input(type="number", name="inkrement", value=sg["inkrement"] if sg else 30, min=0)),
         Label("Vit tid", Input(type="number", step="any", name="vit_tid", value=sg["vit_tid"] if sg else 5400, min=0)),
         Label("Svart tid", Input(type="number", step="any", name="svart_tid", value=sg["svart_tid"] if sg else 5400, min=0)),
         Label("Status", Select(*(Option(x, selected=bool(sg and x == sg["status"])) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status")),

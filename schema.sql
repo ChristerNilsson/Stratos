@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS parti (
   rotation    INTEGER NOT NULL DEFAULT 0 CHECK (rotation IN (0, 1, 2, 3)),
   vit_id      INTEGER NOT NULL REFERENCES spelare(id),
   svart_id    INTEGER NOT NULL REFERENCES spelare(id),
-  inkrement   INTEGER NOT NULL DEFAULT 0 CHECK (inkrement >= 0),
+  inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
   vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
   svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
   senast_startad REAL NOT NULL DEFAULT (
@@ -63,8 +63,8 @@ INSERT OR IGNORE INTO parti (
   1, 2, 30, 5400, 5400, 'pågår'
 );
 
-INSERT OR IGNORE INTO drag (parti_id, nummer, franruta, tillruta) VALUES
-  (1, 1, 'e2', 'e4'),
-  (1, 2, 'g8', 'f6'),
-  (1, 3, 'b1', 'c3'),
-  (1, 4, 'f6', 'e4');
+-- INSERT OR IGNORE INTO drag (parti_id, nummer, franruta, tillruta) VALUES
+--   (1, 1, 'e2', 'e4'),
+--   (1, 2, 'g8', 'f6'),
+--   (1, 3, 'b1', 'c3'),
+--   (1, 4, 'f6', 'e4');
