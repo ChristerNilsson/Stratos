@@ -64,6 +64,7 @@ def init_db():
 
     migrate_location_schema()
     ensure_location_name_schema()
+    ensure_location_rotation_schema()
     ensure_game_date_schema()
     ensure_clock_schema()
     ensure_real_clock_schema()
@@ -87,6 +88,8 @@ def migrate_location_schema():
               namn       TEXT NOT NULL DEFAULT '',
               latitud    REAL NOT NULL,
               longitud   REAL NOT NULL,
+              rotation   INTEGER NOT NULL DEFAULT 0
+                         CHECK (rotation BETWEEN 0 AND 359),
               storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
@@ -162,6 +165,20 @@ def ensure_location_name_schema():
                 WHEN id = 1 THEN 'Skarpnäck 800'
                 ELSE 'Plats ' || id
             END
+            """
+        )
+
+
+def ensure_location_rotation_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(plats)")}
+        if "rotation" in columns:
+            return
+        db.execute(
+            """
+            ALTER TABLE plats
+            ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0
+            CHECK (rotation BETWEEN 0 AND 359)
             """
         )
 
@@ -285,10 +302,16 @@ def get_game(game_id, player_id):
                 parti.vit_tid,
                 parti.svart_id,
                 svart.namn AS svart_namn,
-                parti.svart_tid
+                parti.svart_tid,
+                parti.rotation AS parti_rotation,
+                plats.latitud,
+                plats.longitud,
+                plats.storlek,
+                plats.rotation AS plats_rotation
             FROM parti
             JOIN spelare AS vit ON vit.id = parti.vit_id
             JOIN spelare AS svart ON svart.id = parti.svart_id
+            JOIN plats ON plats.id = parti.plats_id
             WHERE parti.id = ?
               AND ? IN (parti.vit_id, parti.svart_id)
             """,
@@ -622,6 +645,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             Input(name="namn", value=p["namn"], required=True),
             Input(type="number", step="any", name="latitud", value=p["latitud"], required=True),
             Input(type="number", step="any", name="longitud", value=p["longitud"], required=True),
+            Input(type="number", name="rotation", value=p["rotation"], min=0, max=359, required=True),
             Input(type="number", step="any", name="storlek", value=p["storlek"], required=True),
             Input(type="submit", value="Spara"),
             Input(type="submit", value="Ta bort", formaction="/admin/plats/delete"),
@@ -672,12 +696,13 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Namn", Input(name="namn", value=selected_location["namn"] if selected_location else "", required=True)),
         Label("Latitud", Input(type="number", step="any", name="latitud", value=selected_location["latitud"] if selected_location else "", required=True)),
         Label("Longitud", Input(type="number", step="any", name="longitud", value=selected_location["longitud"] if selected_location else "", required=True)),
+        Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=0, max=359, required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"), method="post", action="/admin/plats/save",
     )
     location_table = Table(
-        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Storlek"), Th("Kommandon"))),
-        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(p["storlek"]), Td(
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th("Kommandon"))),
+        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
             A("✏️", href=f'/admin?edit_plats={p["id"]}#platser', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
@@ -754,11 +779,11 @@ def post(session, id: int):
 
 
 @rt("/admin/plats/save")
-def post(session, namn: str, latitud: float, longitud: float, storlek: float, id: int = 0):
+def post(session, namn: str, latitud: float, longitud: float, rotation: int, storlek: float, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,storlek=? WHERE id=?", (namn, latitud, longitud, storlek, id))
-        else: db.execute("INSERT INTO plats(namn,latitud,longitud,storlek) VALUES(?,?,?,?)", (namn, latitud, longitud, storlek))
+        if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
+        else: db.execute("INSERT INTO plats(namn,latitud,longitud,rotation,storlek) VALUES(?,?,?,?,?)", (namn, latitud, longitud, rotation, storlek))
     return admin_redirect("platser")
 
 
@@ -919,6 +944,7 @@ def get(parti: int = 1, spelare: int = 1):
                 box-shadow: inset 0 0 0 4px #2980b9;
             }
             #selection-status { min-height: 1.25rem; margin: .4rem 0; }
+            #navigation-status { min-height: 3rem; margin: .4rem 0; }
             #chess-status { min-height: 1.5rem; }
             """
         ),
@@ -939,6 +965,8 @@ def get(parti: int = 1, spelare: int = 1):
             let activeClock = null;
             let lastClockUpdate = Date.now();
             let selectedSquare = null;
+            let pendingMove = null;
+            let positionWatch = null;
             let board;
             let socket;
 
@@ -992,6 +1020,7 @@ def get(parti: int = 1, spelare: int = 1):
             }
 
             function onDragStart(source, piece) {
+                if (pendingMove) return false;
                 if (!socket || socket.readyState !== WebSocket.OPEN) return false;
                 if (game.game_over()) return false;
                 if (game.turn() !== playerColor) return false;
@@ -999,6 +1028,116 @@ def get(parti: int = 1, spelare: int = 1):
                     (game.turn() === "w" && piece.startsWith("b")) ||
                     (game.turn() === "b" && piece.startsWith("w"))
                 ) return false;
+            }
+
+            function squareCenter(square) {
+                const size = Number(boardElement.dataset.size);
+                const squareSize = size / 8;
+                const fileOffset =
+                    (square.charCodeAt(0) - "a".charCodeAt(0) - 3.5) *
+                    squareSize;
+                const rankOffset = (Number(square[1]) - 1 - 3.5) * squareSize;
+                const angle = Number(boardElement.dataset.rotation) * Math.PI / 180;
+                const east =
+                    Math.sin(angle) * rankOffset +
+                    Math.sin(angle + Math.PI / 2) * fileOffset;
+                const north =
+                    Math.cos(angle) * rankOffset +
+                    Math.cos(angle + Math.PI / 2) * fileOffset;
+                const latitude = Number(boardElement.dataset.latitude);
+                const longitude = Number(boardElement.dataset.longitude);
+                return {
+                    latitude: latitude + north / 111320,
+                    longitude:
+                        longitude + east /
+                        (111320 * Math.cos(latitude * Math.PI / 180))
+                };
+            }
+
+            function distanceMeters(latitude, longitude, target) {
+                const radius = 6371000;
+                const lat1 = latitude * Math.PI / 180;
+                const lat2 = target.latitude * Math.PI / 180;
+                const deltaLat = lat2 - lat1;
+                const deltaLon =
+                    (target.longitude - longitude) * Math.PI / 180;
+                const a =
+                    Math.sin(deltaLat / 2) ** 2 +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(deltaLon / 2) ** 2;
+                return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            }
+
+            function stopNavigation() {
+                if (positionWatch !== null) {
+                    navigator.geolocation.clearWatch(positionWatch);
+                    positionWatch = null;
+                }
+            }
+
+            function updateNavigation(position) {
+                if (!pendingMove) return;
+                const targetSquare =
+                    pendingMove.stage === "from"
+                        ? pendingMove.from
+                        : pendingMove.to;
+                const target = squareCenter(targetSquare);
+                const distance = distanceMeters(
+                    position.coords.latitude,
+                    position.coords.longitude,
+                    target
+                );
+                document.getElementById("navigation-status").textContent =
+                    `Position ${position.coords.latitude.toFixed(6)}, ` +
+                    `${position.coords.longitude.toFixed(6)} · ` +
+                    `mål ${targetSquare} · ${distance.toFixed(0)} m kvar · ` +
+                    `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
+
+                if (distance > 25 || position.coords.accuracy > 25) return;
+                navigator.vibrate?.(pendingMove.stage === "from" ? 250 : [250, 100, 250]);
+                if (pendingMove.stage === "from") {
+                    pendingMove.stage = "to";
+                    const nextTarget = squareCenter(pendingMove.to);
+                    document.getElementById("navigation-status").textContent =
+                        `Framkomst till ${pendingMove.from} bekräftad. ` +
+                        `Nytt mål: ${pendingMove.to} ` +
+                        `(${nextTarget.latitude.toFixed(6)}, ` +
+                        `${nextTarget.longitude.toFixed(6)}).`;
+                } else {
+                    const move = pendingMove;
+                    pendingMove = null;
+                    stopNavigation();
+                    document.getElementById("navigation-status").textContent =
+                        `Framkomst till ${move.to} bekräftad. Draget skickas.`;
+                    socket.send(JSON.stringify({
+                        type: "move",
+                        from: move.from,
+                        to: move.to
+                    }));
+                }
+            }
+
+            function startNavigation(source, target) {
+                if (!navigator.geolocation) {
+                    document.getElementById("navigation-status").textContent =
+                        "Webbläsaren saknar stöd för GPS-position.";
+                    return false;
+                }
+                pendingMove = {from: source, to: target, stage: "from"};
+                const firstTarget = squareCenter(source);
+                document.getElementById("navigation-status").textContent =
+                    `Hämtar position. Första mål: ${source} ` +
+                    `(${firstTarget.latitude.toFixed(6)}, ` +
+                    `${firstTarget.longitude.toFixed(6)}).`;
+                positionWatch = navigator.geolocation.watchPosition(
+                    updateNavigation,
+                    (error) => {
+                        document.getElementById("navigation-status").textContent =
+                            `GPS-fel: ${error.message}`;
+                    },
+                    {enableHighAccuracy: true, maximumAge: 0, timeout: 15000}
+                );
+                return true;
             }
 
             function sendMove(source, target) {
@@ -1012,12 +1151,7 @@ def get(parti: int = 1, spelare: int = 1):
                 });
                 if (move === null) return false;
                 game.undo();
-                socket.send(JSON.stringify({
-                    type: "move",
-                    from: source,
-                    to: target
-                }));
-                return true;
+                return startNavigation(source, target);
             }
 
             function onDrop(source, target) {
@@ -1089,6 +1223,11 @@ def get(parti: int = 1, spelare: int = 1):
                 }
                 if (game.turn() !== playerColor) {
                     selectionStatus.textContent = "Det är inte din tur.";
+                    return;
+                }
+                if (pendingMove) {
+                    selectionStatus.textContent =
+                        "Slutför GPS-besöket för det valda draget.";
                     return;
                 }
 
@@ -1182,6 +1321,13 @@ def get(parti: int = 1, spelare: int = 1):
                 data_parti=str(parti),
                 data_spelare=str(spelare),
                 data_color="w" if spelare == game["vit_id"] else "b",
+                data_latitude=str(game["latitud"]),
+                data_longitude=str(game["longitud"]),
+                data_size=str(game["storlek"]),
+                data_rotation=str(
+                    (game["plats_rotation"] + game["parti_rotation"] * 90)
+                    % 360
+                ),
             ),
             Div(
                 H2(player[0]),
@@ -1194,6 +1340,7 @@ def get(parti: int = 1, spelare: int = 1):
                 cls="player current-player",
             ),
             P(id="selection-status", aria_live="polite"),
+            P(id="navigation-status", aria_live="polite"),
             P(id="chess-status", aria_live="polite"),
         ),
     )
