@@ -592,6 +592,12 @@ def admin_style():
             min-height: 0;
             margin: 0 !important;
         }
+        .row-action input.reset-icon {
+            height: 1.5rem;
+            padding: .1rem .3rem;
+            color: #064;
+            font: bold 1.2rem/1 Arial, "Segoe UI Symbol", sans-serif;
+        }
         .icon-action, .row-action input {
             display: inline-block;
             border: 0;
@@ -752,7 +758,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/parti/delete", cls="row-action"), " ", Form(
-                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="↻", title="Återställ parti", aria_label="Återställ parti"),
+                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="⟳", title="Återställ parti", aria_label="Återställ parti", cls="reset-icon", onclick="return confirm('Återställ partiet och radera alla drag?')"),
                 method="post", action="/admin/parti/reset", cls="row-action"))) for g in games)),
     )
     return Title("Admin"), admin_style(), Script(
