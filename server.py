@@ -1153,6 +1153,23 @@ def get(parti: int = 1, spelare: int = 1):
                 return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
             }
 
+            function prepareSpeech() {
+                if (!("speechSynthesis" in window)) return;
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance("");
+                utterance.lang = "sv-SE";
+                window.speechSynthesis.speak(utterance);
+            }
+
+            function speakSquare(square) {
+                if (!("speechSynthesis" in window)) return;
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(square);
+                utterance.lang = "sv-SE";
+                utterance.rate = 0.85;
+                window.speechSynthesis.speak(utterance);
+            }
+
             function markerPosition(file, rank) {
                 let x = file / 8 * 100;
                 let y = (1 - rank / 8) * 100;
@@ -1251,16 +1268,22 @@ def get(parti: int = 1, spelare: int = 1):
                     position.coords.longitude,
                     target
                 );
+                const arrivalRadius =
+                    Number(boardElement.dataset.size) / 32;
                 updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
                     `Position ${position.coords.latitude.toFixed(6)}, ` +
                     `${position.coords.longitude.toFixed(6)} · ` +
                     `mål ${targetSquare} · bäring ${bearing.toFixed(0)}° · ` +
                     `${distance.toFixed(0)} m kvar · ` +
+                    `radie ${arrivalRadius.toFixed(1)} m · ` +
                     `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
 
-                if (distance > 25 || position.coords.accuracy > 25) return;
-                navigator.vibrate?.(pendingMove.stage === "first" ? 250 : [250, 100, 250]);
+                if (
+                    distance > arrivalRadius ||
+                    position.coords.accuracy > arrivalRadius
+                ) return;
+                speakSquare(targetSquare);
                 if (pendingMove.stage === "first") {
                     const visited = pendingMove.first;
                     pendingMove.stage = "second";
@@ -1298,6 +1321,7 @@ def get(parti: int = 1, spelare: int = 1):
                     first: null,
                     second: null
                 };
+                prepareSpeech();
                 document.getElementById("navigation-status").textContent =
                     `Hämtar position och avgör om ${source} eller ` +
                     `${target} ligger närmast.`;
