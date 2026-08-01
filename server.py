@@ -939,6 +939,20 @@ def get(parti: int = 1, spelare: int = 1):
             .player h2, .player p { margin: 0 0 .125rem; }
             .clock { font: 700 1.5rem monospace; }
             #chessboard { width: 100%; }
+            #board-map { position: relative; }
+            .board-marker {
+                position: absolute;
+                z-index: 20;
+                width: 14px;
+                height: 14px;
+                border: 2px solid white;
+                border-radius: 50%;
+                box-shadow: 0 0 3px #000;
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+            }
+            #player-marker { background: #1687ff; }
+            #target-marker { background: #e33; }
             #chessboard .last-move-from {
                 background: #a9d18e !important;
             }
@@ -1073,11 +1087,72 @@ def get(parti: int = 1, spelare: int = 1):
                 return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             }
 
+            function bearingDegrees(latitude, longitude, target) {
+                const lat1 = latitude * Math.PI / 180;
+                const lat2 = target.latitude * Math.PI / 180;
+                const deltaLon =
+                    (target.longitude - longitude) * Math.PI / 180;
+                const y = Math.sin(deltaLon) * Math.cos(lat2);
+                const x =
+                    Math.cos(lat1) * Math.sin(lat2) -
+                    Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
+                return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+            }
+
+            function markerPosition(file, rank) {
+                let x = file / 8 * 100;
+                let y = (1 - rank / 8) * 100;
+                if (playerColor === "b") {
+                    x = 100 - x;
+                    y = 100 - y;
+                }
+                return {
+                    x: Math.max(1, Math.min(99, x)),
+                    y: Math.max(1, Math.min(99, y))
+                };
+            }
+
+            function showMarker(id, file, rank) {
+                const marker = document.getElementById(id);
+                const point = markerPosition(file, rank);
+                marker.style.left = `${point.x}%`;
+                marker.style.top = `${point.y}%`;
+                marker.hidden = false;
+            }
+
+            function updateBoardMarkers(position, targetSquare) {
+                const latitude = Number(boardElement.dataset.latitude);
+                const longitude = Number(boardElement.dataset.longitude);
+                const north =
+                    (position.coords.latitude - latitude) * 111320;
+                const east =
+                    (position.coords.longitude - longitude) *
+                    111320 * Math.cos(latitude * Math.PI / 180);
+                const angle = Number(boardElement.dataset.rotation) * Math.PI / 180;
+                const rankOffset = east * Math.sin(angle) + north * Math.cos(angle);
+                const fileOffset =
+                    east * Math.sin(angle + Math.PI / 2) +
+                    north * Math.cos(angle + Math.PI / 2);
+                const squareSize = Number(boardElement.dataset.size) / 8;
+                showMarker(
+                    "player-marker",
+                    fileOffset / squareSize + 4,
+                    rankOffset / squareSize + 4
+                );
+                showMarker(
+                    "target-marker",
+                    targetSquare.charCodeAt(0) - "a".charCodeAt(0) + 0.5,
+                    Number(targetSquare[1]) - 0.5
+                );
+            }
+
             function stopNavigation() {
                 if (positionWatch !== null) {
                     navigator.geolocation.clearWatch(positionWatch);
                     positionWatch = null;
                 }
+                document.getElementById("player-marker").hidden = true;
+                document.getElementById("target-marker").hidden = true;
             }
 
             function updateNavigation(position) {
@@ -1092,16 +1167,24 @@ def get(parti: int = 1, spelare: int = 1):
                     position.coords.longitude,
                     target
                 );
+                const bearing = bearingDegrees(
+                    position.coords.latitude,
+                    position.coords.longitude,
+                    target
+                );
+                updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
                     `Position ${position.coords.latitude.toFixed(6)}, ` +
                     `${position.coords.longitude.toFixed(6)} · ` +
-                    `mål ${targetSquare} · ${distance.toFixed(0)} m kvar · ` +
+                    `mål ${targetSquare} · bäring ${bearing.toFixed(0)}° · ` +
+                    `${distance.toFixed(0)} m kvar · ` +
                     `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
 
                 if (distance > 25 || position.coords.accuracy > 25) return;
                 navigator.vibrate?.(pendingMove.stage === "from" ? 250 : [250, 100, 250]);
                 if (pendingMove.stage === "from") {
                     pendingMove.stage = "to";
+                    updateBoardMarkers(position, pendingMove.to);
                     const nextTarget = squareCenter(pendingMove.to);
                     document.getElementById("navigation-status").textContent =
                         `Framkomst till ${pendingMove.from} bekräftad. ` +
@@ -1130,6 +1213,11 @@ def get(parti: int = 1, spelare: int = 1):
                 }
                 pendingMove = {from: source, to: target, stage: "from"};
                 const firstTarget = squareCenter(source);
+                showMarker(
+                    "target-marker",
+                    source.charCodeAt(0) - "a".charCodeAt(0) + 0.5,
+                    Number(source[1]) - 0.5
+                );
                 document.getElementById("navigation-status").textContent =
                     `Hämtar position. Första mål: ${source} ` +
                     `(${firstTarget.latitude.toFixed(6)}, ` +
@@ -1322,17 +1410,22 @@ def get(parti: int = 1, spelare: int = 1):
                 cls="player opponent",
             ),
             Div(
-                id="chessboard",
-                data_parti=str(parti),
-                data_spelare=str(spelare),
-                data_color="w" if spelare == game["vit_id"] else "b",
-                data_latitude=str(game["latitud"]),
-                data_longitude=str(game["longitud"]),
-                data_size=str(game["storlek"]),
-                data_rotation=str(
-                    (game["plats_rotation"] + game["parti_rotation"] * 90)
-                    % 360
+                Div(
+                    id="chessboard",
+                    data_parti=str(parti),
+                    data_spelare=str(spelare),
+                    data_color="w" if spelare == game["vit_id"] else "b",
+                    data_latitude=str(game["latitud"]),
+                    data_longitude=str(game["longitud"]),
+                    data_size=str(game["storlek"]),
+                    data_rotation=str(
+                        (game["plats_rotation"] + game["parti_rotation"] * 90)
+                        % 360
+                    ),
                 ),
+                Div(id="player-marker", cls="board-marker", title="Din position", hidden=True),
+                Div(id="target-marker", cls="board-marker", title="Mål", hidden=True),
+                id="board-map",
             ),
             Div(
                 H2(player[0]),
