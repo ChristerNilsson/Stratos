@@ -867,40 +867,57 @@ def get(session, plats_id: int):
                 const centerMarker = L.marker(map.getCenter(), {
                     draggable: true
                 }).addTo(map).bindTooltip("Brädets mittpunkt");
-                const square = L.polygon([], {
-                    color: "#d22",
-                    weight: 3,
-                    fillOpacity: 0.15
-                }).addTo(map);
+                const squareCenters = L.layerGroup().addTo(map);
 
-                function corners() {
+                function centerPoints() {
                     const lat = Number(latitude.value);
                     const lon = Number(longitude.value);
-                    const half = Number(size.value) / 2;
+                    const cellSize = Number(size.value) / 8;
                     const angle = Number(rotation.value) * Math.PI / 180;
-                    return [
-                        [-half, -half], [half, -half],
-                        [half, half], [-half, half]
-                    ].map(([file, rank]) => {
+                    const points = [];
+                    for (let rank = 0; rank < 8; rank++) {
+                        for (let file = 0; file < 8; file++) {
+                            const fileOffset = (file - 3.5) * cellSize;
+                            const rankOffset = (rank - 3.5) * cellSize;
                         const east =
-                            Math.sin(angle) * rank +
-                            Math.sin(angle + Math.PI / 2) * file;
+                                Math.sin(angle) * rankOffset +
+                                Math.sin(angle + Math.PI / 2) * fileOffset;
                         const north =
-                            Math.cos(angle) * rank +
-                            Math.cos(angle + Math.PI / 2) * file;
-                        return [
-                            lat + north / 111320,
-                            lon + east /
-                                (111320 * Math.cos(lat * Math.PI / 180))
-                        ];
-                    });
+                                Math.cos(angle) * rankOffset +
+                                Math.cos(angle + Math.PI / 2) * fileOffset;
+                            points.push({
+                                name: "abcdefgh"[file] + (rank + 1),
+                                latlng: [
+                                    lat + north / 111320,
+                                    lon + east /
+                                        (111320 * Math.cos(lat * Math.PI / 180))
+                                ]
+                            });
+                        }
+                    }
+                    return points;
                 }
 
                 function updateMap(fit = false) {
                     const center = [Number(latitude.value), Number(longitude.value)];
                     centerMarker.setLatLng(center);
-                    square.setLatLngs(corners());
-                    if (fit) map.fitBounds(square.getBounds(), {padding: [30, 30]});
+                    squareCenters.clearLayers();
+                    const points = centerPoints();
+                    points.forEach((point) => {
+                        L.circleMarker(point.latlng, {
+                            radius: 5,
+                            color: "#b00",
+                            weight: 2,
+                            fillColor: "#e33",
+                            fillOpacity: 0.8
+                        }).bindTooltip(point.name).addTo(squareCenters);
+                    });
+                    if (fit) {
+                        map.fitBounds(
+                            L.latLngBounds(points.map((point) => point.latlng)),
+                            {padding: [30, 30]}
+                        );
+                    }
                 }
 
                 function setCenter(latlng) {
