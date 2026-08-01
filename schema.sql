@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS parti (
   inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
   vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
   svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
+  vit_starttid   REAL NOT NULL DEFAULT 5400 CHECK (vit_starttid >= 0),
+  svart_starttid REAL NOT NULL DEFAULT 5400 CHECK (svart_starttid >= 0),
   senast_startad REAL NOT NULL DEFAULT (
     (julianday('now') - 2440587.5) * 86400.0
   ),

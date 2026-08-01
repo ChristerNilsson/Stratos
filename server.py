@@ -68,6 +68,7 @@ def init_db():
     ensure_game_date_schema()
     ensure_clock_schema()
     ensure_real_clock_schema()
+    ensure_initial_clock_schema()
 
 
 def migrate_location_schema():
@@ -112,6 +113,8 @@ def migrate_location_schema():
               inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
               vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
               svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
+              vit_starttid   REAL NOT NULL DEFAULT 5400 CHECK (vit_starttid >= 0),
+              svart_starttid REAL NOT NULL DEFAULT 5400 CHECK (svart_starttid >= 0),
               senast_startad REAL NOT NULL DEFAULT (
                 (julianday('now') - 2440587.5) * 86400.0
               ),
@@ -126,7 +129,8 @@ def migrate_location_schema():
 
             INSERT INTO parti_new (
               id, plats_id, rotation, vit_id, svart_id,
-              inkrement, vit_tid, svart_tid, status
+              inkrement, vit_tid, svart_tid,
+              vit_starttid, svart_starttid, status
             )
             SELECT
               parti.id,
@@ -135,6 +139,8 @@ def migrate_location_schema():
               parti.vit_id,
               parti.svart_id,
               parti.inkrement,
+              parti.vit_tid,
+              parti.svart_tid,
               parti.vit_tid,
               parti.svart_tid,
               parti.status
@@ -285,6 +291,17 @@ def ensure_real_clock_schema():
             COMMIT;
             """
         )
+
+
+def ensure_initial_clock_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info(parti)")}
+        if "vit_starttid" not in columns:
+            db.execute("ALTER TABLE parti ADD COLUMN vit_starttid REAL")
+            db.execute("UPDATE parti SET vit_starttid = vit_tid")
+        if "svart_starttid" not in columns:
+            db.execute("ALTER TABLE parti ADD COLUMN svart_starttid REAL")
+            db.execute("UPDATE parti SET svart_starttid = svart_tid")
 
 
 init_db()
@@ -723,6 +740,8 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Inkrement", Input(type="number", name="inkrement", value=sg["inkrement"] if sg else 30, min=0)),
         Label("Vit tid", Input(type="number", step="any", name="vit_tid", value=sg["vit_tid"] if sg else 5400, min=0)),
         Label("Svart tid", Input(type="number", step="any", name="svart_tid", value=sg["svart_tid"] if sg else 5400, min=0)),
+        Label("Vit starttid", Input(type="number", step="any", name="vit_starttid", value=sg["vit_starttid"] if sg else 5400, min=0)),
+        Label("Svart starttid", Input(type="number", step="any", name="svart_starttid", value=sg["svart_starttid"] if sg else 5400, min=0)),
         Label("Status", Select(*(Option(x, selected=bool(sg and x == sg["status"])) for x in ("pågår", "remi", "vit vinst", "svart vinst")), name="status")),
         Input(type="submit", value="Spara ändringar" if sg else "Lägg till"), method="post", action="/admin/parti/save",
     )
@@ -732,7 +751,9 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
-                method="post", action="/admin/parti/delete", cls="row-action"))) for g in games)),
+                method="post", action="/admin/parti/delete", cls="row-action"), " ", Form(
+                Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="↻", title="Återställ parti", aria_label="Återställ parti"),
+                method="post", action="/admin/parti/reset", cls="row-action"))) for g in games)),
     )
     return Title("Admin"), admin_style(), Script(
         """
@@ -800,12 +821,12 @@ def post(session, id: int):
 
 
 @rt("/admin/parti/save")
-def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, status: str, id: int = 0):
+def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, vit_starttid: float, svart_starttid: float, status: str, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        values = (datum, plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, time.time(), status)
-        if id: db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
-        else: db.execute("INSERT INTO parti(datum,plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?,?)", values)
+        values = (datum, plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, vit_starttid, svart_starttid, time.time(), status)
+        if id: db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,vit_starttid=?,svart_starttid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
+        else: db.execute("INSERT INTO parti(datum,plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,vit_starttid,svart_starttid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", values)
     return admin_redirect("partier")
 
 
@@ -813,6 +834,29 @@ def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_i
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db: db.execute("DELETE FROM parti WHERE id=?", (id,))
+    return admin_redirect("partier")
+
+
+@rt("/admin/parti/reset")
+async def post(session, id: int):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
+    async with game_locks[id]:
+        with admin_connection() as db:
+            db.execute("DELETE FROM drag WHERE parti_id = ?", (id,))
+            db.execute(
+                """
+                UPDATE parti
+                SET vit_tid = vit_starttid,
+                    svart_tid = svart_starttid,
+                    senast_startad = ?,
+                    status = 'pågår'
+                WHERE id = ?
+                """,
+                (time.time(), id),
+            )
+        state = game_state(id)
+    await broadcast_game(id, state)
     return admin_redirect("partier")
 
 
@@ -1056,6 +1100,10 @@ def get(parti: int = 1, spelare: int = 1):
                     (square.charCodeAt(0) - "a".charCodeAt(0) - 3.5) *
                     squareSize;
                 const rankOffset = (Number(square[1]) - 1 - 3.5) * squareSize;
+                // Geografisk bäring: 0° = norr och positiv riktning medurs.
+                // Därför är östkomponenten sin(bäring) och
+                // nordkomponenten cos(bäring), till skillnad från
+                // matematisk vinkel där 0° ligger längs x-axeln.
                 const angle = Number(boardElement.dataset.rotation) * Math.PI / 180;
                 const east =
                     Math.sin(angle) * rankOffset +
@@ -1128,6 +1176,8 @@ def get(parti: int = 1, spelare: int = 1):
                 const east =
                     (position.coords.longitude - longitude) *
                     111320 * Math.cos(latitude * Math.PI / 180);
+                // Inversen till samma geografiska bäringssystem:
+                // 0° = norr, 90° = öster, medurs rotation.
                 const angle = Number(boardElement.dataset.rotation) * Math.PI / 180;
                 const rankOffset = east * Math.sin(angle) + north * Math.cos(angle);
                 const fileOffset =
@@ -1157,10 +1207,33 @@ def get(parti: int = 1, spelare: int = 1):
 
             function updateNavigation(position) {
                 if (!pendingMove) return;
+                if (pendingMove.stage === "choosing") {
+                    const fromTarget = squareCenter(pendingMove.from);
+                    const toTarget = squareCenter(pendingMove.to);
+                    const fromDistance = distanceMeters(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        fromTarget
+                    );
+                    const toDistance = distanceMeters(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        toTarget
+                    );
+                    pendingMove.first =
+                        fromDistance <= toDistance
+                            ? pendingMove.from
+                            : pendingMove.to;
+                    pendingMove.second =
+                        pendingMove.first === pendingMove.from
+                            ? pendingMove.to
+                            : pendingMove.from;
+                    pendingMove.stage = "first";
+                }
                 const targetSquare =
-                    pendingMove.stage === "from"
-                        ? pendingMove.from
-                        : pendingMove.to;
+                    pendingMove.stage === "first"
+                        ? pendingMove.first
+                        : pendingMove.second;
                 const target = squareCenter(targetSquare);
                 const distance = distanceMeters(
                     position.coords.latitude,
@@ -1181,14 +1254,15 @@ def get(parti: int = 1, spelare: int = 1):
                     `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
 
                 if (distance > 25 || position.coords.accuracy > 25) return;
-                navigator.vibrate?.(pendingMove.stage === "from" ? 250 : [250, 100, 250]);
-                if (pendingMove.stage === "from") {
-                    pendingMove.stage = "to";
-                    updateBoardMarkers(position, pendingMove.to);
-                    const nextTarget = squareCenter(pendingMove.to);
+                navigator.vibrate?.(pendingMove.stage === "first" ? 250 : [250, 100, 250]);
+                if (pendingMove.stage === "first") {
+                    const visited = pendingMove.first;
+                    pendingMove.stage = "second";
+                    updateBoardMarkers(position, pendingMove.second);
+                    const nextTarget = squareCenter(pendingMove.second);
                     document.getElementById("navigation-status").textContent =
-                        `Framkomst till ${pendingMove.from} bekräftad. ` +
-                        `Nytt mål: ${pendingMove.to} ` +
+                        `Framkomst till ${visited} bekräftad. ` +
+                        `Nytt mål: ${pendingMove.second} ` +
                         `(${nextTarget.latitude.toFixed(6)}, ` +
                         `${nextTarget.longitude.toFixed(6)}).`;
                 } else {
@@ -1196,7 +1270,7 @@ def get(parti: int = 1, spelare: int = 1):
                     pendingMove = null;
                     stopNavigation();
                     document.getElementById("navigation-status").textContent =
-                        `Framkomst till ${move.to} bekräftad. Draget skickas.`;
+                        `Framkomst till ${targetSquare} bekräftad. Draget skickas.`;
                     socket.send(JSON.stringify({
                         type: "move",
                         from: move.from,
@@ -1211,17 +1285,16 @@ def get(parti: int = 1, spelare: int = 1):
                         "Webbläsaren saknar stöd för GPS-position.";
                     return false;
                 }
-                pendingMove = {from: source, to: target, stage: "from"};
-                const firstTarget = squareCenter(source);
-                showMarker(
-                    "target-marker",
-                    source.charCodeAt(0) - "a".charCodeAt(0) + 0.5,
-                    Number(source[1]) - 0.5
-                );
+                pendingMove = {
+                    from: source,
+                    to: target,
+                    stage: "choosing",
+                    first: null,
+                    second: null
+                };
                 document.getElementById("navigation-status").textContent =
-                    `Hämtar position. Första mål: ${source} ` +
-                    `(${firstTarget.latitude.toFixed(6)}, ` +
-                    `${firstTarget.longitude.toFixed(6)}).`;
+                    `Hämtar position och avgör om ${source} eller ` +
+                    `${target} ligger närmast.`;
                 positionWatch = navigator.geolocation.watchPosition(
                     updateNavigation,
                     (error) => {
