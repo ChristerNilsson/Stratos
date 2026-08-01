@@ -620,10 +620,15 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         locations = db.execute("SELECT * FROM plats ORDER BY id").fetchall()
         games = db.execute(
             """
-            SELECT parti.*, vit.namn AS vit_namn, svart.namn AS svart_namn
+            SELECT
+                parti.*,
+                vit.namn AS vit_namn,
+                svart.namn AS svart_namn,
+                plats.namn AS plats_namn
             FROM parti
             JOIN spelare vit ON vit.id=parti.vit_id
             JOIN spelare svart ON svart.id=parti.svart_id
+            JOIN plats ON plats.id=parti.plats_id
             ORDER BY parti.id
             """
         ).fetchall()
@@ -723,7 +728,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     )
     game_table = Table(
         Thead(Tr(Th("ID"), Th("Datum"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
-        Tbody(*(Tr(Td(g["id"]), Td(g["datum"]), Td(g["plats_id"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
+        Tbody(*(Tr(Td(g["id"]), Td(g["datum"]), Td(g["plats_namn"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
             A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
