@@ -871,7 +871,7 @@ def get(session, plats_id: int):
                 const squareCenters = L.layerGroup().addTo(map);
                 let positionMarker = null;
 
-                function showPosition(position, centerMap = false) {
+                function showPosition(position) {
                     const latlng = [
                         position.coords.latitude,
                         position.coords.longitude
@@ -890,7 +890,6 @@ def get(session, plats_id: int):
                     document.getElementById("position-status").textContent =
                         `Din position: ${latlng[0].toFixed(6)}, ` +
                         `${latlng[1].toFixed(6)}`;
-                    if (centerMap) map.panTo(latlng);
                 }
 
                 function positionError(error) {
@@ -900,16 +899,20 @@ def get(session, plats_id: int):
                             : "Din position kunde inte hämtas.";
                 }
 
-                function requestPosition(centerMap = false) {
+                function startPositionTracking() {
                     if (!navigator.geolocation) {
                         document.getElementById("position-status").textContent =
                             "Webbläsaren saknar stöd för positionering.";
                         return;
                     }
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => showPosition(position, centerMap),
+                    navigator.geolocation.watchPosition(
+                        showPosition,
                         positionError,
-                        {enableHighAccuracy: true, maximumAge: 5000}
+                        {
+                            enableHighAccuracy: true,
+                            maximumAge: 1000,
+                            timeout: 15000
+                        }
                     );
                 }
 
@@ -976,11 +979,8 @@ def get(session, plats_id: int):
                 [latitude, longitude, size, rotation].forEach((input) => {
                     input.addEventListener("input", () => updateMap());
                 });
-                document.getElementById("show-position").addEventListener(
-                    "click", () => requestPosition(true)
-                );
                 updateMap(true);
-                requestPosition();
+                startPositionTracking();
             });
             """
         ),
@@ -988,7 +988,6 @@ def get(session, plats_id: int):
             A("Till platser", href="/admin#platser"),
             H1(f'Redigera {location["namn"]}'),
             Div(
-                Input(type="button", value="Visa min position", id="show-position"),
                 Div("Hämtar din position …", id="position-status"),
                 id="position-tools",
             ),
@@ -1224,6 +1223,7 @@ def get(parti: int = 1, spelare: int = 1):
             let selectedSquare = null;
             let pendingMove = null;
             let positionWatch = null;
+            let lastNavigationPosition = null;
             let board;
             let socket;
 
@@ -1369,6 +1369,10 @@ def get(parti: int = 1, spelare: int = 1):
                 if (playback) playback.catch(() => {});
             }
 
+            document.getElementById("test-arrival-sound").addEventListener(
+                "click", playArrivalSound
+            );
+
             function markerPosition(file, rank) {
                 let x = file / 8 * 100;
                 let y = (1 - rank / 8) * 100;
@@ -1425,6 +1429,7 @@ def get(parti: int = 1, spelare: int = 1):
                 }
                 document.getElementById("player-marker").hidden = true;
                 document.getElementById("target-marker").hidden = true;
+                lastNavigationPosition = null;
             }
 
             function updateNavigation(position) {
@@ -1467,6 +1472,40 @@ def get(parti: int = 1, spelare: int = 1):
                     position.coords.longitude,
                     target
                 );
+                let travelBearing = Number.isFinite(position.coords.heading)
+                    ? position.coords.heading
+                    : null;
+                if (travelBearing === null && lastNavigationPosition) {
+                    const movementDistance = distanceMeters(
+                        lastNavigationPosition.latitude,
+                        lastNavigationPosition.longitude,
+                        {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        }
+                    );
+                    if (movementDistance >= 1) {
+                        travelBearing = bearingDegrees(
+                            lastNavigationPosition.latitude,
+                            lastNavigationPosition.longitude,
+                            {
+                                latitude: position.coords.latitude,
+                                longitude: position.coords.longitude
+                            }
+                        );
+                    }
+                }
+                lastNavigationPosition = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                };
+                const bearingDifference = travelBearing === null
+                    ? null
+                    : (travelBearing - bearing + 540) % 360 - 180;
+                const differenceText = bearingDifference === null
+                    ? "avvikelse –"
+                    : `avvikelse ${bearingDifference > 0 ? "+" : ""}` +
+                        `${bearingDifference.toFixed(0)}°`;
                 const arrivalRadius =
                     Number(boardElement.dataset.size) / 32;
                 updateBoardMarkers(position, targetSquare);
@@ -1474,6 +1513,7 @@ def get(parti: int = 1, spelare: int = 1):
                     `Position ${position.coords.latitude.toFixed(6)}, ` +
                     `${position.coords.longitude.toFixed(6)} · ` +
                     `mål ${targetSquare} · bäring ${bearing.toFixed(0)}° · ` +
+                    `${differenceText} · ` +
                     `${distance.toFixed(0)} m kvar · ` +
                     `radie ${arrivalRadius.toFixed(1)} m · ` +
                     `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
@@ -1518,6 +1558,7 @@ def get(parti: int = 1, spelare: int = 1):
                     first: null,
                     second: null
                 };
+                lastNavigationPosition = null;
                 prepareSpeech();
                 document.getElementById("navigation-status").textContent =
                     `Hämtar position och avgör om ${source} eller ` +
@@ -1739,6 +1780,12 @@ def get(parti: int = 1, spelare: int = 1):
             ),
             P(id="selection-status", aria_live="polite"),
             P(id="navigation-status", aria_live="polite"),
+            Input(
+                type="button",
+                value="Testa ankomstljud",
+                id="test-arrival-sound",
+                title="Spela 10000.mp3",
+            ),
             P(id="chess-status", aria_live="polite"),
         ),
     )
