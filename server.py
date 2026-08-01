@@ -731,7 +731,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     location_table = Table(
         Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th("Kommandon"))),
         Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
-            A("✏️", href=f'/admin?edit_plats={p["id"]}#platser', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
+            A("🗺️", href=f'/admin/plats/{p["id"]}/karta', title="Redigera på karta", aria_label="Redigera på karta", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
     )
@@ -817,6 +817,123 @@ def post(session, namn: str, latitud: float, longitud: float, rotation: int, sto
         if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
         else: db.execute("INSERT INTO plats(namn,latitud,longitud,rotation,storlek) VALUES(?,?,?,?,?)", (namn, latitud, longitud, rotation, storlek))
     return admin_redirect("platser")
+
+
+@rt("/admin/plats/{plats_id}/karta")
+def get(session, plats_id: int):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        location = db.execute(
+            "SELECT * FROM plats WHERE id = ?", (plats_id,)
+        ).fetchone()
+    if location is None:
+        return PlainTextResponse("Platsen hittades inte.", status_code=404)
+
+    return (
+        Title(f'Redigera {location["namn"]}'),
+        Link(
+            rel="stylesheet",
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+        ),
+        Script(src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"),
+        Style(
+            """
+            main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
+            #location-map { height: min(70vh, 650px); margin: 1rem 0; }
+            form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+            label { display: grid; gap: .2rem; }
+            input { padding: .45rem; }
+            input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+            """
+        ),
+        Script(
+            """
+            document.addEventListener("DOMContentLoaded", () => {
+                const form = document.getElementById("location-form");
+                const latitude = form.elements.latitud;
+                const longitude = form.elements.longitud;
+                const size = form.elements.storlek;
+                const rotation = form.elements.rotation;
+                const map = L.map("location-map").setView(
+                    [Number(latitude.value), Number(longitude.value)], 15
+                );
+                L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    maxZoom: 19,
+                    attribution:
+                        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+
+                const centerMarker = L.marker(map.getCenter(), {
+                    draggable: true
+                }).addTo(map).bindTooltip("Brädets mittpunkt");
+                const square = L.polygon([], {
+                    color: "#d22",
+                    weight: 3,
+                    fillOpacity: 0.15
+                }).addTo(map);
+
+                function corners() {
+                    const lat = Number(latitude.value);
+                    const lon = Number(longitude.value);
+                    const half = Number(size.value) / 2;
+                    const angle = Number(rotation.value) * Math.PI / 180;
+                    return [
+                        [-half, -half], [half, -half],
+                        [half, half], [-half, half]
+                    ].map(([file, rank]) => {
+                        const east =
+                            Math.sin(angle) * rank +
+                            Math.sin(angle + Math.PI / 2) * file;
+                        const north =
+                            Math.cos(angle) * rank +
+                            Math.cos(angle + Math.PI / 2) * file;
+                        return [
+                            lat + north / 111320,
+                            lon + east /
+                                (111320 * Math.cos(lat * Math.PI / 180))
+                        ];
+                    });
+                }
+
+                function updateMap(fit = false) {
+                    const center = [Number(latitude.value), Number(longitude.value)];
+                    centerMarker.setLatLng(center);
+                    square.setLatLngs(corners());
+                    if (fit) map.fitBounds(square.getBounds(), {padding: [30, 30]});
+                }
+
+                function setCenter(latlng) {
+                    latitude.value = latlng.lat.toFixed(8);
+                    longitude.value = latlng.lng.toFixed(8);
+                    updateMap();
+                }
+
+                map.on("click", (event) => setCenter(event.latlng));
+                centerMarker.on("drag", (event) => setCenter(event.target.getLatLng()));
+                [latitude, longitude, size, rotation].forEach((input) => {
+                    input.addEventListener("input", () => updateMap());
+                });
+                updateMap(true);
+            });
+            """
+        ),
+        Main(
+            A("Till platser", href="/admin#platser"),
+            H1(f'Redigera {location["namn"]}'),
+            Div(id="location-map"),
+            Form(
+                Input(type="hidden", name="id", value=location["id"]),
+                Label("Namn", Input(name="namn", value=location["namn"], required=True)),
+                Label("Latitud", Input(type="number", step="any", name="latitud", value=location["latitud"], required=True)),
+                Label("Longitud", Input(type="number", step="any", name="longitud", value=location["longitud"], required=True)),
+                Label("Rotation (°)", Input(type="number", name="rotation", min=0, max=359, value=location["rotation"], required=True)),
+                Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
+                Input(type="submit", value="Spara"),
+                id="location-form", method="post", action="/admin/plats/save",
+            ),
+        ),
+    )
 
 
 @rt("/admin/plats/delete")
