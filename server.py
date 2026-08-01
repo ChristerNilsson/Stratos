@@ -947,9 +947,10 @@ def get(session, plats_id: int):
                     centerMarker.setLatLng(center);
                     squareCenters.clearLayers();
                     const points = centerPoints();
+                    const arrivalRadius = Number(size.value) / 32;
                     points.forEach((point) => {
-                        L.circleMarker(point.latlng, {
-                            radius: 5,
+                        L.circle(point.latlng, {
+                            radius: arrivalRadius,
                             color: "#b00",
                             weight: 2,
                             fillColor: "#e33",
