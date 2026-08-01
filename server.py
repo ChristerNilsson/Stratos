@@ -841,6 +841,7 @@ def get(session, plats_id: int):
             """
             main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
             #location-map { height: min(70vh, 650px); margin: 1rem 0; }
+            #position-tools { display: flex; gap: .75rem; align-items: center; }
             form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
             label { display: grid; gap: .2rem; }
             input { padding: .45rem; }
@@ -868,6 +869,49 @@ def get(session, plats_id: int):
                     draggable: true
                 }).addTo(map).bindTooltip("Brädets mittpunkt");
                 const squareCenters = L.layerGroup().addTo(map);
+                let positionMarker = null;
+
+                function showPosition(position, centerMap = false) {
+                    const latlng = [
+                        position.coords.latitude,
+                        position.coords.longitude
+                    ];
+                    if (positionMarker) {
+                        positionMarker.setLatLng(latlng);
+                    } else {
+                        positionMarker = L.circleMarker(latlng, {
+                            radius: 8,
+                            color: "#0645ad",
+                            weight: 3,
+                            fillColor: "#39f",
+                            fillOpacity: 0.9
+                        }).addTo(map).bindTooltip("Din position");
+                    }
+                    document.getElementById("position-status").textContent =
+                        `Din position: ${latlng[0].toFixed(6)}, ` +
+                        `${latlng[1].toFixed(6)}`;
+                    if (centerMap) map.panTo(latlng);
+                }
+
+                function positionError(error) {
+                    document.getElementById("position-status").textContent =
+                        error.code === 1
+                            ? "Tillåt platsåtkomst för att visa din position."
+                            : "Din position kunde inte hämtas.";
+                }
+
+                function requestPosition(centerMap = false) {
+                    if (!navigator.geolocation) {
+                        document.getElementById("position-status").textContent =
+                            "Webbläsaren saknar stöd för positionering.";
+                        return;
+                    }
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => showPosition(position, centerMap),
+                        positionError,
+                        {enableHighAccuracy: true, maximumAge: 5000}
+                    );
+                }
 
                 function centerPoints() {
                     const lat = Number(latitude.value);
@@ -931,13 +975,22 @@ def get(session, plats_id: int):
                 [latitude, longitude, size, rotation].forEach((input) => {
                     input.addEventListener("input", () => updateMap());
                 });
+                document.getElementById("show-position").addEventListener(
+                    "click", () => requestPosition(true)
+                );
                 updateMap(true);
+                requestPosition();
             });
             """
         ),
         Main(
             A("Till platser", href="/admin#platser"),
             H1(f'Redigera {location["namn"]}'),
+            Div(
+                Input(type="button", value="Visa min position", id="show-position"),
+                Div("Hämtar din position …", id="position-status"),
+                id="position-tools",
+            ),
             Div(id="location-map"),
             Form(
                 Input(type="hidden", name="id", value=location["id"]),
@@ -1304,6 +1357,17 @@ def get(parti: int = 1, spelare: int = 1):
                 window.speechSynthesis.speak(utterance);
             }
 
+            const arrivalSound = new Audio(
+                "/sounds/distance/female/10000.mp3"
+            );
+            arrivalSound.preload = "auto";
+
+            function playArrivalSound() {
+                arrivalSound.currentTime = 0;
+                const playback = arrivalSound.play();
+                if (playback) playback.catch(() => {});
+            }
+
             function markerPosition(file, rank) {
                 let x = file / 8 * 100;
                 let y = (1 - rank / 8) * 100;
@@ -1413,10 +1477,8 @@ def get(parti: int = 1, spelare: int = 1):
                     `radie ${arrivalRadius.toFixed(1)} m · ` +
                     `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
 
-                if (
-                    distance > arrivalRadius ||
-                    position.coords.accuracy > arrivalRadius
-                ) return;
+                if (distance > arrivalRadius) return;
+                playArrivalSound();
                 speakSquare(targetSquare);
                 if (pendingMove.stage === "first") {
                     const visited = pendingMove.first;
