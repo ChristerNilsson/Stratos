@@ -942,8 +942,8 @@ def get(session, plats_id: int):
             Form(
                 Input(type="hidden", name="id", value=location["id"]),
                 Label("Namn", Input(name="namn", value=location["namn"], required=True)),
-                Label("Latitud", Input(type="number", step="any", name="latitud", value=location["latitud"], required=True)),
-                Label("Longitud", Input(type="number", step="any", name="longitud", value=location["longitud"], required=True)),
+                Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=location["latitud"], required=True)),
+                Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=location["longitud"], required=True)),
                 Label("Rotation (°)", Input(type="number", name="rotation", min=0, max=359, value=location["rotation"], required=True)),
                 Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
                 Input(type="submit", value="Spara"),
