@@ -24,8 +24,28 @@ except ImportError as error:
 OUTPUT_DIR = Path(__file__).resolve().parent / "sounds" / "squares" / "female"
 VOICE = "sv-SE-SofieNeural"
 MAX_ATTEMPTS = 3
+LETTER_NAMES = {
+    "a": "adam",
+    "b": "bertil",
+    "c": "cesar",
+    "d": "david",
+    "e": "erik",
+    "f": "filip",
+    "g": "gustav",
+    "h": "helge",
+}
+NUMBER_NAMES = {
+    "1": "ett",
+    "2": "två",
+    "3": "tre",
+    "4": "fyra",
+    "5": "fem",
+    "6": "sex",
+    "7": "sju",
+    "8": "åtta",
+}
 PART_SOUNDS = {
-    **{letter: letter for letter in "abcdefgh"},
+    **LETTER_NAMES,
     # "ätt" is a homophone of the number "ett" and avoids the voice
     # engine's incorrect pronunciation of the standalone number word.
     "1": "ätt",
@@ -44,7 +64,7 @@ def sounds_to_create() -> dict[str, str]:
     for letter in "abcdefgh":
         for digit in "12345678":
             sounds[f"{letter}{digit}"] = (
-                f"{PART_SOUNDS[letter]} {PART_SOUNDS[digit]}"
+                f"{LETTER_NAMES[letter]} {NUMBER_NAMES[digit]}"
             )
     return sounds
 

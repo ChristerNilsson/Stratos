@@ -1717,6 +1717,9 @@ def get(parti: int = 1, spelare: int = 1):
                 const bearingDifference = compassBearing === null
                     ? null
                     : (compassBearing - bearing + 540) % 360 - 180;
+                const compassText = compassBearing === null
+                    ? "–"
+                    : `${compassBearing.toFixed(0)}°`;
                 const differenceText = bearingDifference === null
                     ? "–"
                     : `${bearingDifference > 0 ? "+" : ""}` +
@@ -1726,7 +1729,8 @@ def get(parti: int = 1, spelare: int = 1):
                 updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
                     `${targetSquare} · ${bearing.toFixed(0)}° · ` +
-                    `${distance.toFixed(0)} m · ${differenceText}`;
+                    `${distance.toFixed(0)} m · ${compassText} · ` +
+                    `${differenceText}`;
 
                 if (distance > arrivalRadius) return;
                 playSquareSound(targetSquare);
