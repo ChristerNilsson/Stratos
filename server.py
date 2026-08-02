@@ -652,7 +652,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             JOIN spelare vit ON vit.id=parti.vit_id
             JOIN spelare svart ON svart.id=parti.svart_id
             JOIN plats ON plats.id=parti.plats_id
-            ORDER BY parti.id
+            ORDER BY parti.id DESC
             """
         ).fetchall()
 
@@ -711,29 +711,29 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         method="post", action="/admin/spelare/save",
     )
     player_table = Table(
-        Thead(Tr(Th("ID"), Th("Namn"), Th("Telefon"), Th("E-post"), Th("Kommandon"))),
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Telefon"), Th("E-post"), Th())),
         Tbody(*(Tr(
             Td(p["id"]), Td(p["namn"]), Td(p["telefon"]), Td(p["mail"]),
             Td(A("✏️", href=f'/admin?edit_spelare={p["id"]}#spelare', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/spelare/delete", cls="row-action"))
-        ) for p in players)),
+        ) for p in reversed(players))),
     )
     location_editor = Form(
         Input(type="hidden", name="id", value=selected_location["id"] if selected_location else 0),
         Label("Namn", Input(name="namn", value=selected_location["namn"] if selected_location else "", required=True)),
-        Label("Latitud", Input(type="number", step="any", name="latitud", value=selected_location["latitud"] if selected_location else "", required=True)),
-        Label("Longitud", Input(type="number", step="any", name="longitud", value=selected_location["longitud"] if selected_location else "", required=True)),
+        Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=f'{selected_location["latitud"]:.5f}' if selected_location else "", required=True)),
+        Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=f'{selected_location["longitud"]:.5f}' if selected_location else "", required=True)),
         Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=0, max=359, required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"), method="post", action="/admin/plats/save",
     )
     location_table = Table(
-        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th("Kommandon"))),
-        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(p["latitud"]), Td(p["longitud"]), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
-            A("🗺️", href=f'/admin/plats/{p["id"]}/karta', title="Redigera på karta", aria_label="Redigera på karta", cls="icon-action"), " ", Form(
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th())),
+        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(f'{p["latitud"]:.5f}'), Td(f'{p["longitud"]:.5f}'), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
+            A("✏️", href=f'/admin/plats/{p["id"]}/karta', title="Redigera på karta", aria_label="Redigera på karta", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
-                method="post", action="/admin/plats/delete", cls="row-action"))) for p in locations)),
+                method="post", action="/admin/plats/delete", cls="row-action"))) for p in reversed(locations))),
     )
     sg = selected_game
     game_editor = Form(
@@ -752,7 +752,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Input(type="submit", value="Spara ändringar" if sg else "Lägg till"), method="post", action="/admin/parti/save",
     )
     game_table = Table(
-        Thead(Tr(Th("ID"), Th("Datum"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th("Kommandon"))),
+        Thead(Tr(Th("ID"), Th("Datum"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th())),
         Tbody(*(Tr(Td(g["id"]), Td(g["datum"]), Td(g["plats_namn"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
             A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
@@ -784,9 +784,9 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     ), Main(
         H1("Administration"),
         Div(A("Spelare", href="#spelare", cls="admin-tab", data_tab="spelare"), A("Platser", href="#platser", cls="admin-tab", data_tab="platser"), A("Partier", href="#partier", cls="admin-tab", data_tab="partier"), id="admin-nav"),
-        Div(H2("Spelare"), player_editor, player_table, cls="admin-section", data_section="spelare"),
-        Div(H2("Platser"), location_editor, location_table, cls="admin-section", data_section="platser"),
-        Div(H2("Partier"), game_editor, game_table, cls="admin-section", data_section="partier"),
+        Div(H2("Spelare"), player_table, player_editor, cls="admin-section", data_section="spelare"),
+        Div(H2("Platser"), location_table, location_editor, cls="admin-section", data_section="platser"),
+        Div(H2("Partier"), game_table, game_editor, cls="admin-section", data_section="partier"),
     )
 
 
@@ -813,6 +813,8 @@ def post(session, id: int):
 @rt("/admin/plats/save")
 def post(session, namn: str, latitud: float, longitud: float, rotation: int, storlek: float, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    latitud = round(latitud, 5)
+    longitud = round(longitud, 5)
     with admin_connection() as db:
         if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
         else: db.execute("INSERT INTO plats(namn,latitud,longitud,rotation,storlek) VALUES(?,?,?,?,?)", (namn, latitud, longitud, rotation, storlek))
@@ -969,8 +971,8 @@ def get(session, plats_id: int):
                 }
 
                 function setCenter(latlng) {
-                    latitude.value = latlng.lat.toFixed(8);
-                    longitude.value = latlng.lng.toFixed(8);
+                    latitude.value = latlng.lat.toFixed(5);
+                    longitude.value = latlng.lng.toFixed(5);
                     updateMap();
                 }
 
@@ -995,8 +997,8 @@ def get(session, plats_id: int):
             Form(
                 Input(type="hidden", name="id", value=location["id"]),
                 Label("Namn", Input(name="namn", value=location["namn"], required=True)),
-                Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=location["latitud"], required=True)),
-                Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=location["longitud"], required=True)),
+                Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=f'{location["latitud"]:.5f}', required=True)),
+                Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=f'{location["longitud"]:.5f}', required=True)),
                 Label("Rotation (°)", Input(type="number", name="rotation", min=0, max=359, value=location["rotation"], required=True)),
                 Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
                 Input(type="submit", value="Spara"),
