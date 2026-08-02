@@ -76,6 +76,7 @@ def init_db():
     ensure_real_clock_schema()
     ensure_initial_clock_schema()
     ensure_game_rotation_degrees_schema()
+    ensure_event_log_schema()
 
 
 def migrate_location_schema():
@@ -394,7 +395,38 @@ def ensure_game_rotation_degrees_schema():
         )
 
 
+def ensure_event_log_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS handelse (
+              id        INTEGER PRIMARY KEY,
+              timestamp TEXT NOT NULL DEFAULT (
+                strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              ),
+              person    TEXT NOT NULL,
+              text      TEXT NOT NULL
+            )
+            """
+        )
+
+
 init_db()
+
+
+def log_event(person, text, db=None):
+    owns_connection = db is None
+    connection = db or sqlite3.connect(DB_PATH)
+    try:
+        connection.execute(
+            "INSERT INTO handelse (person, text) VALUES (?, ?)",
+            (str(person or "okänd"), str(text)),
+        )
+        if owns_connection:
+            connection.commit()
+    finally:
+        if owns_connection:
+            connection.close()
 
 
 def get_game(game_id, player_id):
@@ -536,7 +568,22 @@ def save_move(game_id, player_id, source, target):
             """,
             (white_time, black_time, now, game_id),
         )
+        player_name = db.execute(
+            "SELECT namn FROM spelare WHERE id = ?",
+            (player_id,),
+        ).fetchone()[0]
+        log_event(
+            player_name,
+            f"Parti {game_id}: drag {number}, {source}–{target}.",
+            db,
+        )
         board.push(move)
+        if board.is_game_over():
+            log_event(
+                player_name,
+                f"Parti {game_id} avslutades med resultat {board.result()}.",
+                db,
+            )
         moves.append({"from": source, "to": target})
         return make_game_state(db, game_id, board, moves)
 
@@ -560,12 +607,19 @@ async def game_websocket(websocket):
         await websocket.close(code=1008)
         return
 
-    if get_game(game_id, player_id) is None:
+    game = get_game(game_id, player_id)
+    if game is None:
         await websocket.close(code=1008)
         return
 
+    player_name = (
+        game["vit_namn"] if player_id == game["vit_id"]
+        else game["svart_namn"]
+    )
+
     await websocket.accept()
     game_connections[game_id].add(websocket)
+    log_event(player_name, f"Anslöt till parti {game_id}.")
     try:
         await websocket.send_json(game_state(game_id))
         while True:
@@ -582,6 +636,10 @@ async def game_websocket(websocket):
                 and source[1] in "12345678"
                 and target[1] in "12345678"
             ):
+                log_event(
+                    player_name,
+                    f"Parti {game_id}: ogiltigt dragformat {source}–{target}.",
+                )
                 await websocket.send_json(
                     {"type": "error", "message": "Ogiltigt dragformat."}
                 )
@@ -591,6 +649,10 @@ async def game_websocket(websocket):
                     state = save_move(game_id, player_id, source, target)
                 await broadcast_game(game_id, state)
             except ValueError as error:
+                log_event(
+                    player_name,
+                    f"Parti {game_id}: drag {source}–{target} nekades: {error}",
+                )
                 await websocket.send_json(
                     {"type": "error", "message": str(error)}
                 )
@@ -599,6 +661,7 @@ async def game_websocket(websocket):
         pass
     finally:
         game_connections[game_id].discard(websocket)
+        log_event(player_name, f"Kopplade från parti {game_id}.")
 
 
 app.router.routes.append(WebSocketRoute("/ws", game_websocket))
@@ -720,7 +783,9 @@ def get():
 def post(password: str, session):
     if ADMIN_PASSWORD and hmac.compare_digest(password, ADMIN_PASSWORD):
         session["admin"] = True
+        log_event("admin", "Loggade in.")
         return admin_redirect()
+    log_event("okänd", "Misslyckat inloggningsförsök till admin.")
     return Title("Admin"), Main(H1("Inloggningen misslyckades"), A("Försök igen", href="/admin/login"))
 
 
@@ -929,15 +994,22 @@ def require_admin(session):
 def post(session, namn: str, telefon: str, mail: str, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
     with admin_connection() as db:
-        if id: db.execute("UPDATE spelare SET namn=?,telefon=?,mail=? WHERE id=?", (namn, telefon, mail, id))
-        else: db.execute("INSERT INTO spelare(namn,telefon,mail) VALUES(?,?,?)", (namn, telefon, mail))
+        if id:
+            db.execute("UPDATE spelare SET namn=?,telefon=?,mail=? WHERE id=?", (namn, telefon, mail, id))
+            log_event("admin", f"Uppdaterade spelare {id}: {namn}.", db)
+        else:
+            cursor = db.execute("INSERT INTO spelare(namn,telefon,mail) VALUES(?,?,?)", (namn, telefon, mail))
+            log_event("admin", f"Skapade spelare {cursor.lastrowid}: {namn}.", db)
     return admin_redirect("spelare")
 
 
 @rt("/admin/spelare/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
-    with admin_connection() as db: db.execute("DELETE FROM spelare WHERE id=?", (id,))
+    with admin_connection() as db:
+        player = db.execute("SELECT namn FROM spelare WHERE id=?", (id,)).fetchone()
+        db.execute("DELETE FROM spelare WHERE id=?", (id,))
+        log_event("admin", f"Tog bort spelare {id}: {player['namn'] if player else 'okänd'}.", db)
     return admin_redirect("spelare")
 
 
@@ -947,8 +1019,12 @@ def post(session, namn: str, latitud: float, longitud: float, rotation: int, sto
     latitud = round(latitud, 5)
     longitud = round(longitud, 5)
     with admin_connection() as db:
-        if id: db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
-        else: db.execute("INSERT INTO plats(namn,latitud,longitud,rotation,storlek) VALUES(?,?,?,?,?)", (namn, latitud, longitud, rotation, storlek))
+        if id:
+            db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
+            log_event("admin", f"Uppdaterade plats {id}: {namn}.", db)
+        else:
+            cursor = db.execute("INSERT INTO plats(namn,latitud,longitud,rotation,storlek) VALUES(?,?,?,?,?)", (namn, latitud, longitud, rotation, storlek))
+            log_event("admin", f"Skapade plats {cursor.lastrowid}: {namn}.", db)
     return admin_redirect("platser")
 
 
@@ -1142,7 +1218,10 @@ def get(session, plats_id: int):
 @rt("/admin/plats/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
-    with admin_connection() as db: db.execute("DELETE FROM plats WHERE id=?", (id,))
+    with admin_connection() as db:
+        location = db.execute("SELECT namn FROM plats WHERE id=?", (id,)).fetchone()
+        db.execute("DELETE FROM plats WHERE id=?", (id,))
+        log_event("admin", f"Tog bort plats {id}: {location['namn'] if location else 'okänd'}.", db)
     return admin_redirect("platser")
 
 
@@ -1153,15 +1232,21 @@ def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_i
         return PlainTextResponse("Ogiltig partirotation.", status_code=400)
     with admin_connection() as db:
         values = (datum, plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, vit_starttid, svart_starttid, time.time(), status)
-        if id: db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,vit_starttid=?,svart_starttid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
-        else: db.execute("INSERT INTO parti(datum,plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,vit_starttid,svart_starttid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", values)
+        if id:
+            db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,vit_starttid=?,svart_starttid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
+            log_event("admin", f"Uppdaterade parti {id}; status {status}.", db)
+        else:
+            cursor = db.execute("INSERT INTO parti(datum,plats_id,rotation,vit_id,svart_id,inkrement,vit_tid,svart_tid,vit_starttid,svart_starttid,senast_startad,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", values)
+            log_event("admin", f"Skapade parti {cursor.lastrowid}; status {status}.", db)
     return admin_redirect("partier")
 
 
 @rt("/admin/parti/delete")
 def post(session, id: int):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
-    with admin_connection() as db: db.execute("DELETE FROM parti WHERE id=?", (id,))
+    with admin_connection() as db:
+        db.execute("DELETE FROM parti WHERE id=?", (id,))
+        log_event("admin", f"Tog bort parti {id}.", db)
     return admin_redirect("partier")
 
 
@@ -1183,6 +1268,7 @@ async def post(session, id: int):
                 """,
                 (time.time(), id),
             )
+            log_event("admin", f"Återställde parti {id} och raderade alla drag.", db)
         state = game_state(id)
     await broadcast_game(id, state)
     return admin_redirect("partier")
@@ -2005,7 +2091,9 @@ def get(parti: int = 1, spelare: int = 1):
 
 
 @rt("/db")
-def db_view():
+def db_view(session):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
     sections = []
     for table_name, columns, rows in get_database_tables():
         body = (

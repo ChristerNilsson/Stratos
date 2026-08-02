@@ -49,6 +49,15 @@ CREATE TABLE IF NOT EXISTS drag (
 
 CREATE INDEX IF NOT EXISTS drag_parti_idx ON drag(parti_id, nummer);
 
+CREATE TABLE IF NOT EXISTS handelse (
+  id        INTEGER PRIMARY KEY,
+  timestamp TEXT NOT NULL DEFAULT (
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  ),
+  person    TEXT NOT NULL,
+  text      TEXT NOT NULL
+);
+
 -- Exempeldata för det parti som visas i klienten.
 INSERT OR IGNORE INTO spelare (id, namn, telefon, mail) VALUES
   (1, 'Sture Stolpe', '+46 70 123 45 67', 'sture@example.se'),
