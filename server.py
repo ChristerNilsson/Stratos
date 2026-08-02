@@ -1208,7 +1208,11 @@ def get(parti: int = 1, spelare: int = 1):
                 box-shadow: inset 0 0 0 4px #2980b9;
             }
             #selection-status { min-height: 1.25rem; margin: .4rem 0; }
-            #navigation-status { min-height: 3rem; margin: .4rem 0; }
+            #navigation-status {
+                min-height: 3rem;
+                margin: .4rem 0;
+                font-size: 130%;
+            }
             #chess-status { min-height: 1.5rem; }
             """
         ),
@@ -1366,38 +1370,52 @@ def get(parti: int = 1, spelare: int = 1):
                 window.speechSynthesis.speak(utterance);
             }
 
-            const arrivalSound = new Audio(
-                "/sounds/distance/female/10000.mp3"
+            const squareAudio = new Audio(
+                "/sounds/squares/female/a.mp3"
             );
-            arrivalSound.preload = "auto";
+            squareAudio.preload = "auto";
 
             function unlockAudio() {
-                if (arrivalSound.dataset.unlocked) {
+                if (squareAudio.dataset.unlocked) {
                     return Promise.resolve(true);
                 }
-                arrivalSound.dataset.unlocked = "true";
-                arrivalSound.volume = 0;
-                const playing = arrivalSound.play();
+                squareAudio.dataset.unlocked = "true";
+                squareAudio.volume = 0;
+                const playing = squareAudio.play();
                 if (!playing) {
-                    arrivalSound.volume = 1;
+                    squareAudio.volume = 1;
                     return Promise.resolve(true);
                 }
                 return playing.then(() => {
-                    arrivalSound.pause();
-                    arrivalSound.currentTime = 0;
-                    arrivalSound.volume = 1;
+                    squareAudio.pause();
+                    squareAudio.currentTime = 0;
+                    squareAudio.volume = 1;
                     return true;
                 }).catch(() => {
-                    arrivalSound.volume = 1;
-                    delete arrivalSound.dataset.unlocked;
+                    squareAudio.volume = 1;
+                    delete squareAudio.dataset.unlocked;
                     return false;
                 });
             }
 
-            function playArrivalSound() {
-                arrivalSound.currentTime = 0;
-                const playback = arrivalSound.play();
-                if (playback) playback.catch(() => {});
+            function playSquarePart(part) {
+                return new Promise((resolve, reject) => {
+                    squareAudio.onended = resolve;
+                    squareAudio.onerror = reject;
+                    squareAudio.src = `/sounds/squares/female/${part}.mp3`;
+                    squareAudio.currentTime = 0;
+                    const playback = squareAudio.play();
+                    if (playback) playback.catch(reject);
+                });
+            }
+
+            async function playSquareSound(square) {
+                try {
+                    await playSquarePart(square[0]);
+                    await playSquarePart(square[1]);
+                } catch (_) {
+                    speakSquare(square);
+                }
             }
 
             const audioButton = document.getElementById("enable-audio");
@@ -1561,8 +1579,7 @@ def get(parti: int = 1, spelare: int = 1):
                     `${distance.toFixed(0)} m · ${differenceText}`;
 
                 if (distance > arrivalRadius) return;
-                playArrivalSound();
-                speakSquare(targetSquare);
+                playSquareSound(targetSquare);
                 if (pendingMove.stage === "first") {
                     const visited = pendingMove.first;
                     pendingMove.stage = "second";
