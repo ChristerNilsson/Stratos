@@ -1453,35 +1453,23 @@ def get(parti: int = 1, spelare: int = 1):
             let board;
             let socket;
 
-            function updateCompass(event) {
-                const beta = Number(event.beta);
-                const gamma = Number(event.gamma);
-                if (!Number.isFinite(beta) || !Number.isFinite(gamma)) {
-                    compassBearing = null;
-                    return;
-                }
-                const tilt = Math.acos(Math.max(-1, Math.min(1,
-                    Math.cos(beta * Math.PI / 180) *
-                    Math.cos(gamma * Math.PI / 180)
-                ))) * 180 / Math.PI;
-                if (tilt >= 30) {
-                    compassBearing = null;
-                    return;
-                }
-
+            function deviceHeading(event) {
                 if (Number.isFinite(event.webkitCompassHeading)) {
-                    compassBearing = event.webkitCompassHeading;
-                    return;
+                    return event.webkitCompassHeading;
                 }
                 if (event.absolute && Number.isFinite(event.alpha)) {
                     const screenAngle = screen.orientation
                         ? screen.orientation.angle
                         : Number(window.orientation) || 0;
-                    compassBearing =
-                        (360 - event.alpha + screenAngle + 360) % 360;
-                } else {
-                    compassBearing = null;
+                    return (360 - event.alpha + screenAngle + 360) % 360;
                 }
+                return null;
+            }
+
+            function updateCompass(event) {
+                const heading = deviceHeading(event);
+                if (heading === null) return;
+                compassBearing = heading;
             }
 
             async function startCompass() {
@@ -1494,10 +1482,16 @@ def get(parti: int = 1, spelare: int = 1):
                             await DeviceOrientationEvent.requestPermission();
                         if (permission !== "granted") return;
                     }
-                    const eventName = "ondeviceorientationabsolute" in window
-                        ? "deviceorientationabsolute"
-                        : "deviceorientation";
-                    window.addEventListener(eventName, updateCompass, true);
+                    window.addEventListener(
+                        "deviceorientationabsolute",
+                        updateCompass,
+                        true
+                    );
+                    window.addEventListener(
+                        "deviceorientation",
+                        updateCompass,
+                        true
+                    );
                     compassStarted = true;
                 } catch (_) {
                     compassBearing = null;
