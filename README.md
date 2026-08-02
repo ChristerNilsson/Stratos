@@ -4,7 +4,7 @@ Detta repo innehåller filer för kribban.se (Python-app bakom Nginx) samt stati
 
 ## Publicering till STRATO
 
-När ändringar pushas till huvudgrenen `main` kommer GitHub Actions automatiskt att ladda upp webbplatsen till din STRATO VPS via SSH/SCP.
+När ändringar pushas till huvudgrenen `main` synkroniserar GitHub Actions ändrade webbplatsfiler till din STRATO VPS via rsync över SSH. En pågående äldre deploy avbryts när en ny startar.
 
 ### Nödvändiga GitHub-hemligheter
 
@@ -31,7 +31,7 @@ Valfritt som variabler:
 
 ## Var hamnar filerna?
 
-Workflowen i `.github/workflows/deploy.yml` kopierar hela repositoryt (`./`) till målmappen som anges i `SSH_REMOTE_DIR`. Om denna variabel inte är satt används standarden `/var/www/kribban.se`.
+Workflowen i `.github/workflows/deploy.yml` synkroniserar de filer som behövs i drift till målmappen som anges i `SSH_REMOTE_DIR`. Om denna variabel inte är satt används standarden `/var/www/kribban.se`. Virtuell miljö, sessionsnyckel, databas, Git-metadata och utvecklingsdokument undantas och bevaras på servern. Python-beroenden installeras endast när `requirements.txt` har ändrats.
 
 Det betyder att filerna placeras så här på servern:
 
@@ -63,6 +63,6 @@ Om Nginx fortfarande visar "Welcome to nginx!" betyder det ofta att den kör sta
 
 I STRATO-panelen ska de tre domänerna vara kopplade till samma webbutrymme, där rotmappen innehåller index.html och underkatalogerna a/ respektive b/ används för subdomänerna.
 
-Workflowen i `.github/workflows/deploy.yml` använder nu SCP över SSH och förväntar sig ovan secrets. För att skapa `SSH_PRIVATE_KEY` i GitHub: kopiera innehållet i din privata nyckelfil (t.ex. `~/.ssh/id_rsa`) in i en ny Secret i repoinställningarna.
+Workflowen i `.github/workflows/deploy.yml` använder rsync över SSH och förväntar sig ovan secrets. `rsync` måste finnas både på GitHub-runnern och VPS:en. För att skapa `SSH_PRIVATE_KEY_B64` i GitHub: base64-koda den privata SSH-nyckeln och spara resultatet som en Secret.
 
 Om du ser "Welcome to nginx!" betyder det att domänen når servern men att servern fortfarande använder sin standardvhost. Då måste du lägga till en egen vhost för respektive domän. Exempelkoden finns i [nginx-vhost.conf](nginx-vhost.conf).

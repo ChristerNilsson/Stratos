@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -29,11 +33,28 @@ jobs:
           ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1 || { echo "ERROR: Decoded key is invalid. Check SSH_PRIVATE_KEY_B64."; exit 1; }
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
 
-      - name: Copy files to VPS (SSH/SCP)
+      - name: Sync changed files to VPS
         run: |
           echo "Connecting to $SSH_USERNAME@$SSH_HOST:$SSH_PORT"
           echo "Target directory: $SSH_REMOTE_DIR"
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey -P "$SSH_PORT" -r ./ "$SSH_USERNAME@$SSH_HOST:$SSH_REMOTE_DIR"
+          rsync \
+            --archive \
+            --checksum \
+            --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.venv/' \
+            --exclude='__pycache__/' \
+            --exclude='*.py[cod]' \
+            --exclude='*.db*' \
+            --exclude='.sesskey' \
+            --exclude='.requirements.sha256' \
+            --exclude='anteckningar*' \
+            --exclude='README*' \
+            --exclude='spec*' \
+            --exclude='*.pdf' \
+            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PreferredAuthentications=publickey -p $SSH_PORT" \
+            ./ "$SSH_USERNAME@$SSH_HOST:$SSH_REMOTE_DIR/"
 
       - name: Install and restart FastHTML app
         run: |
@@ -52,8 +73,12 @@ jobs:
             python3 -m venv .venv
           fi
 
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -r requirements.txt
+          requirements_hash="$(sha256sum requirements.txt | awk '{print $1}')"
+          installed_hash="$(cat .requirements.sha256 2>/dev/null || true)"
+          if [ "$requirements_hash" != "$installed_hash" ]; then
+            .venv/bin/python -m pip install -r requirements.txt
+            printf '%s\n' "$requirements_hash" > .requirements.sha256
+          fi
 
           if [ ! -s .sesskey ]; then
             umask 027
@@ -62,10 +87,12 @@ jobs:
           sudo chgrp www-data .sesskey
           chmod 640 .sesskey
 
-          sudo install -m 0644 kribban.service /etc/systemd/system/kribban.service
+          if ! sudo cmp -s kribban.service /etc/systemd/system/kribban.service; then
+            sudo install -m 0644 kribban.service /etc/systemd/system/kribban.service
+            sudo systemctl daemon-reload
+          fi
 
-          sudo systemctl daemon-reload
-          sudo systemctl enable kribban
+          sudo systemctl is-enabled --quiet kribban || sudo systemctl enable kribban
           sudo systemctl restart kribban
           sudo systemctl is-active --quiet kribban
           REMOTE

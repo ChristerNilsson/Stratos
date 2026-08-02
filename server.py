@@ -35,10 +35,16 @@ from fasthtml.common import (
 )
 from starlette.responses import PlainTextResponse, RedirectResponse
 from starlette.routing import WebSocketRoute
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 app, rt = fast_app()
 APP_DIR = Path(__file__).resolve().parent
+app.mount(
+    "/sounds",
+    StaticFiles(directory=APP_DIR / "sounds"),
+    name="sounds",
+)
 SCHEMA_PATH = APP_DIR / "schema.sql"
 DB_PATH = Path(os.environ.get("CHESS_DB_PATH", APP_DIR / "chess.db"))
 game_connections = defaultdict(set)
@@ -1397,7 +1403,7 @@ def get(parti: int = 1, spelare: int = 1):
             const audioButton = document.getElementById("enable-audio");
             audioButton.addEventListener("click", () => {
                 unlockAudio().then((unlocked) => {
-                    audioButton.textContent = unlocked
+                    audioButton.value = unlocked
                         ? "Ljud aktiverat"
                         : "Aktivera ljud";
                     document.getElementById("audio-status").textContent =
@@ -1816,7 +1822,11 @@ def get(parti: int = 1, spelare: int = 1):
             ),
             P(id="selection-status", aria_live="polite"),
             P(id="navigation-status", aria_live="polite"),
-            Button("Aktivera ljud", type="button", id="enable-audio"),
+            Input(
+                type="button",
+                value="Aktivera ljud",
+                id="enable-audio",
+            ),
             P(id="audio-status", aria_live="polite"),
             P(id="chess-status", aria_live="polite"),
         ),
