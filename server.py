@@ -75,6 +75,7 @@ def init_db():
     ensure_clock_schema()
     ensure_real_clock_schema()
     ensure_initial_clock_schema()
+    ensure_game_rotation_degrees_schema()
 
 
 def migrate_location_schema():
@@ -113,7 +114,7 @@ def migrate_location_schema():
                           CHECK (datum = date(datum)),
               plats_id    INTEGER NOT NULL REFERENCES plats(id),
               rotation    INTEGER NOT NULL DEFAULT 0
-                          CHECK (rotation IN (0, 1, 2, 3)),
+                          CHECK (rotation IN (0, 90, 180, 270)),
               vit_id      INTEGER NOT NULL REFERENCES spelare(id),
               svart_id    INTEGER NOT NULL REFERENCES spelare(id),
               inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
@@ -141,7 +142,7 @@ def migrate_location_schema():
             SELECT
               parti.id,
               plats.id,
-              CAST(((parti.rotation + 45) / 90) AS INTEGER) % 4,
+              (CAST(((parti.rotation + 45) / 90) AS INTEGER) % 4) * 90,
               parti.vit_id,
               parti.svart_id,
               parti.inkrement,
@@ -263,7 +264,7 @@ def ensure_real_clock_schema():
                           CHECK (datum = date(datum)),
               plats_id    INTEGER NOT NULL REFERENCES plats(id),
               rotation    INTEGER NOT NULL DEFAULT 0
-                          CHECK (rotation IN (0, 1, 2, 3)),
+                          CHECK (rotation IN (0, 90, 180, 270)),
               vit_id      INTEGER NOT NULL REFERENCES spelare(id),
               svart_id    INTEGER NOT NULL REFERENCES spelare(id),
               inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
@@ -286,7 +287,14 @@ def ensure_real_clock_schema():
               vit_tid, svart_tid, senast_startad, status
             )
             SELECT
-              id, datum, plats_id, rotation, vit_id, svart_id, inkrement,
+              id, datum, plats_id,
+              CASE rotation
+                WHEN 1 THEN 90
+                WHEN 2 THEN 180
+                WHEN 3 THEN 270
+                ELSE rotation
+              END,
+              vit_id, svart_id, inkrement,
               CAST(vit_tid AS REAL), CAST(svart_tid AS REAL),
               CAST(senast_startad AS REAL), status
             FROM parti;
@@ -308,6 +316,82 @@ def ensure_initial_clock_schema():
         if "svart_starttid" not in columns:
             db.execute("ALTER TABLE parti ADD COLUMN svart_starttid REAL")
             db.execute("UPDATE parti SET svart_starttid = svart_tid")
+
+
+def ensure_game_rotation_degrees_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        table_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='parti'"
+        ).fetchone()[0]
+        if "rotation IN (0, 90, 180, 270)" in table_sql:
+            return
+
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.executescript(
+            """
+            BEGIN IMMEDIATE;
+
+            CREATE TABLE parti_degrees (
+              id          INTEGER PRIMARY KEY,
+              datum       TEXT NOT NULL DEFAULT (date('now'))
+                          CHECK (datum = date(datum)),
+              plats_id    INTEGER NOT NULL REFERENCES plats(id),
+              rotation    INTEGER NOT NULL DEFAULT 0
+                          CHECK (rotation IN (0, 90, 180, 270)),
+              vit_id      INTEGER NOT NULL REFERENCES spelare(id),
+              svart_id    INTEGER NOT NULL REFERENCES spelare(id),
+              inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
+              vit_tid     REAL NOT NULL CHECK (vit_tid >= 0),
+              svart_tid   REAL NOT NULL CHECK (svart_tid >= 0),
+              vit_starttid REAL NOT NULL DEFAULT 5400
+                          CHECK (vit_starttid >= 0),
+              svart_starttid REAL NOT NULL DEFAULT 5400
+                          CHECK (svart_starttid >= 0),
+              senast_startad REAL NOT NULL DEFAULT (
+                (julianday('now') - 2440587.5) * 86400.0
+              ),
+              status      TEXT NOT NULL DEFAULT 'pågår'
+                          CHECK (
+                            status IN (
+                              'pågår', 'remi', 'vit vinst', 'svart vinst'
+                            )
+                          ),
+              CHECK (vit_id <> svart_id)
+            );
+
+            INSERT INTO parti_degrees (
+              id, datum, plats_id, rotation, vit_id, svart_id, inkrement,
+              vit_tid, svart_tid, vit_starttid, svart_starttid,
+              senast_startad, status
+            )
+            SELECT
+              id, datum, plats_id,
+              CASE rotation
+                WHEN 1 THEN 90
+                WHEN 2 THEN 180
+                WHEN 3 THEN 270
+                ELSE rotation
+              END,
+              vit_id, svart_id, inkrement, vit_tid, svart_tid,
+              vit_starttid, svart_starttid, senast_startad, status
+            FROM parti;
+
+            DROP TABLE parti;
+            ALTER TABLE parti_degrees RENAME TO parti;
+
+            CREATE TRIGGER IF NOT EXISTS parti_starta_klocka
+            AFTER INSERT ON parti
+            WHEN NEW.senast_startad = 0
+            BEGIN
+              UPDATE parti
+              SET senast_startad =
+                  (julianday('now') - 2440587.5) * 86400.0
+              WHERE id = NEW.id;
+            END;
+
+            COMMIT;
+            """
+        )
 
 
 init_db()
@@ -692,7 +776,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Form(
             Input(type="hidden", name="id", value=g["id"]),
             Select(*location_options(g["plats_id"]), name="plats_id"),
-            Select(*(Option(str(x), value=x, selected=x == g["rotation"]) for x in range(4)), name="rotation"),
+            Select(*(Option(f"{x}°", value=x, selected=x == g["rotation"]) for x in (0, 90, 180, 270)), name="rotation"),
             Select(*player_options(g["vit_id"]), name="vit_id"),
             Select(*player_options(g["svart_id"]), name="svart_id"),
             Input(type="number", name="inkrement", value=g["inkrement"], min=0),
@@ -751,7 +835,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Input(type="hidden", name="id", value=sg["id"] if sg else 0),
         Label("Datum", Input(type="date", name="datum", value=sg["datum"] if sg else time.strftime("%Y-%m-%d"), required=True)),
         Label("Plats", Select(*location_options(sg["plats_id"] if sg else None), name="plats_id")),
-        Label("Rotation", Select(*(Option(str(x), value=x, selected=bool(sg and x == sg["rotation"])) for x in range(4)), name="rotation")),
+        Label("Rotation", Select(*(Option(f"{x}°", value=x, selected=bool(sg and x == sg["rotation"])) for x in (0, 90, 180, 270)), name="rotation")),
         Label("Vit", Select(*player_options(sg["vit_id"] if sg else None), name="vit_id")),
         Label("Svart", Select(*player_options(sg["svart_id"] if sg else None), name="svart_id")),
         Label("Inkrement", Input(type="number", name="inkrement", value=sg["inkrement"] if sg else 30, min=0)),
@@ -1065,6 +1149,8 @@ def post(session, id: int):
 @rt("/admin/parti/save")
 def post(session, datum: str, plats_id: int, rotation: int, vit_id: int, svart_id: int, inkrement: int, vit_tid: float, svart_tid: float, vit_starttid: float, svart_starttid: float, status: str, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
+    if rotation not in (0, 90, 180, 270):
+        return PlainTextResponse("Ogiltig partirotation.", status_code=400)
     with admin_connection() as db:
         values = (datum, plats_id, rotation, vit_id, svart_id, inkrement, vit_tid, svart_tid, vit_starttid, svart_starttid, time.time(), status)
         if id: db.execute("UPDATE parti SET datum=?,plats_id=?,rotation=?,vit_id=?,svart_id=?,inkrement=?,vit_tid=?,svart_tid=?,vit_starttid=?,svart_starttid=?,senast_startad=?,status=? WHERE id=?", values + (id,))
@@ -1883,7 +1969,7 @@ def get(parti: int = 1, spelare: int = 1):
                     data_longitude=str(game["longitud"]),
                     data_size=str(game["storlek"]),
                     data_rotation=str(
-                        (game["plats_rotation"] + game["parti_rotation"] * 90)
+                        (game["plats_rotation"] + game["parti_rotation"])
                         % 360
                     ),
                 ),

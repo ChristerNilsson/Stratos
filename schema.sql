@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS parti (
   datum       TEXT NOT NULL DEFAULT (date('now'))
               CHECK (datum = date(datum)),
   plats_id    INTEGER NOT NULL REFERENCES plats(id),
-  -- Kvartsvarv: 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°.
-  rotation    INTEGER NOT NULL DEFAULT 0 CHECK (rotation IN (0, 1, 2, 3)),
+  rotation    INTEGER NOT NULL DEFAULT 0
+              CHECK (rotation IN (0, 90, 180, 270)),
   vit_id      INTEGER NOT NULL REFERENCES spelare(id),
   svart_id    INTEGER NOT NULL REFERENCES spelare(id),
   inkrement   INTEGER NOT NULL DEFAULT 30 CHECK (inkrement >= 0),
