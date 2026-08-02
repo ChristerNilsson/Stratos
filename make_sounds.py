@@ -24,7 +24,7 @@ except ImportError as error:
 OUTPUT_DIR = Path(__file__).resolve().parent / "sounds" / "squares" / "female"
 VOICE = "sv-SE-SofieNeural"
 MAX_ATTEMPTS = 3
-SOUNDS = {
+PART_SOUNDS = {
     **{letter: letter for letter in "abcdefgh"},
     # "ätt" is a homophone of the number "ett" and avoids the voice
     # engine's incorrect pronunciation of the standalone number word.
@@ -37,6 +37,16 @@ SOUNDS = {
     "7": "sju",
     "8": "åtta",
 }
+
+
+def sounds_to_create() -> dict[str, str]:
+    sounds = dict(PART_SOUNDS)
+    for letter in "abcdefgh":
+        for digit in "12345678":
+            sounds[f"{letter}{digit}"] = (
+                f"{PART_SOUNDS[letter]} {PART_SOUNDS[digit]}"
+            )
+    return sounds
 
 
 async def create_sound(filename: str, spoken_text: str) -> None:
@@ -71,9 +81,10 @@ async def create_sound(filename: str, spoken_text: str) -> None:
 
 async def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for filename, spoken_text in SOUNDS.items():
+    sounds = sounds_to_create()
+    for filename, spoken_text in sounds.items():
         await create_sound(filename, spoken_text)
-    print(f"Done: {len(SOUNDS)} MP3 files created with {VOICE}.")
+    print(f"Done: {len(sounds)} MP3 files created with {VOICE}.")
 
 
 if __name__ == "__main__":

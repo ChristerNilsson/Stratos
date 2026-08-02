@@ -1276,9 +1276,61 @@ def get(parti: int = 1, spelare: int = 1):
             let selectedSquare = null;
             let pendingMove = null;
             let positionWatch = null;
-            let lastNavigationPosition = null;
+            let compassBearing = null;
+            let compassStarted = false;
             let board;
             let socket;
+
+            function updateCompass(event) {
+                const beta = Number(event.beta);
+                const gamma = Number(event.gamma);
+                if (!Number.isFinite(beta) || !Number.isFinite(gamma)) {
+                    compassBearing = null;
+                    return;
+                }
+                const tilt = Math.acos(Math.max(-1, Math.min(1,
+                    Math.cos(beta * Math.PI / 180) *
+                    Math.cos(gamma * Math.PI / 180)
+                ))) * 180 / Math.PI;
+                if (tilt >= 30) {
+                    compassBearing = null;
+                    return;
+                }
+
+                if (Number.isFinite(event.webkitCompassHeading)) {
+                    compassBearing = event.webkitCompassHeading;
+                    return;
+                }
+                if (event.absolute && Number.isFinite(event.alpha)) {
+                    const screenAngle = screen.orientation
+                        ? screen.orientation.angle
+                        : Number(window.orientation) || 0;
+                    compassBearing =
+                        (360 - event.alpha + screenAngle + 360) % 360;
+                } else {
+                    compassBearing = null;
+                }
+            }
+
+            async function startCompass() {
+                if (compassStarted || !("DeviceOrientationEvent" in window)) {
+                    return;
+                }
+                try {
+                    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+                        const permission =
+                            await DeviceOrientationEvent.requestPermission();
+                        if (permission !== "granted") return;
+                    }
+                    const eventName = "ondeviceorientationabsolute" in window
+                        ? "deviceorientationabsolute"
+                        : "deviceorientation";
+                    window.addEventListener(eventName, updateCompass, true);
+                    compassStarted = true;
+                } catch (_) {
+                    compassBearing = null;
+                }
+            }
 
             function renderClock(color) {
                 const total = Math.max(
@@ -1452,8 +1504,7 @@ def get(parti: int = 1, spelare: int = 1):
 
             async function playSquareSound(square) {
                 try {
-                    await playSquarePart(square[0]);
-                    await playSquarePart(square[1]);
+                    await playSquarePart(square);
                 } catch (_) {
                     speakSquare(square);
                 }
@@ -1535,7 +1586,6 @@ def get(parti: int = 1, spelare: int = 1):
                 }
                 document.getElementById("player-marker").hidden = true;
                 document.getElementById("target-marker").hidden = true;
-                lastNavigationPosition = null;
             }
 
             function updateNavigation(position) {
@@ -1578,36 +1628,9 @@ def get(parti: int = 1, spelare: int = 1):
                     position.coords.longitude,
                     target
                 );
-                let travelBearing = Number.isFinite(position.coords.heading)
-                    ? position.coords.heading
-                    : null;
-                if (travelBearing === null && lastNavigationPosition) {
-                    const movementDistance = distanceMeters(
-                        lastNavigationPosition.latitude,
-                        lastNavigationPosition.longitude,
-                        {
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude
-                        }
-                    );
-                    if (movementDistance >= 1) {
-                        travelBearing = bearingDegrees(
-                            lastNavigationPosition.latitude,
-                            lastNavigationPosition.longitude,
-                            {
-                                latitude: position.coords.latitude,
-                                longitude: position.coords.longitude
-                            }
-                        );
-                    }
-                }
-                lastNavigationPosition = {
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude
-                };
-                const bearingDifference = travelBearing === null
+                const bearingDifference = compassBearing === null
                     ? null
-                    : (travelBearing - bearing + 540) % 360 - 180;
+                    : (compassBearing - bearing + 540) % 360 - 180;
                 const differenceText = bearingDifference === null
                     ? "–"
                     : `${bearingDifference > 0 ? "+" : ""}` +
@@ -1658,7 +1681,7 @@ def get(parti: int = 1, spelare: int = 1):
                     first: null,
                     second: null
                 };
-                lastNavigationPosition = null;
+                startCompass();
                 prepareSpeech();
                 document.getElementById("navigation-status").textContent =
                     `Hämtar position och avgör om ${source} eller ` +
