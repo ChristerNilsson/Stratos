@@ -732,7 +732,12 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=f'{selected_location["longitud"]:.5f}' if selected_location else "", required=True)),
         Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=0, max=359, required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
-        Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"), method="post", action="/admin/plats/save",
+        Input(type="button", value="Använd min Position", id="use-current-position"),
+        Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"),
+        P(id="current-position-status", aria_live="polite"),
+        method="post",
+        action="/admin/plats/save",
+        id="location-editor",
     )
     location_table = Table(
         Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th())),
@@ -785,6 +790,42 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             }));
             const initial = location.hash.slice(1);
             showSection([...tabs].some((tab) => tab.dataset.tab === initial) ? initial : "spelare");
+
+            const positionButton = document.getElementById("use-current-position");
+            const positionStatus = document.getElementById("current-position-status");
+            const locationForm = document.getElementById("location-editor");
+            positionButton.addEventListener("click", () => {
+                if (!navigator.geolocation) {
+                    positionStatus.textContent =
+                        "Webbläsaren saknar stöd för positionering.";
+                    return;
+                }
+                positionButton.disabled = true;
+                positionStatus.textContent = "Hämtar din position …";
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        locationForm.elements.latitud.value =
+                            position.coords.latitude.toFixed(5);
+                        locationForm.elements.longitud.value =
+                            position.coords.longitude.toFixed(5);
+                        positionStatus.textContent =
+                            `Position infogad (noggrannhet ` +
+                            `${position.coords.accuracy.toFixed(0)} m).`;
+                        positionButton.disabled = false;
+                    },
+                    (error) => {
+                        positionStatus.textContent = error.code === 1
+                            ? "Tillåt platsåtkomst och försök igen."
+                            : "Positionen kunde inte hämtas. Försök igen.";
+                        positionButton.disabled = false;
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 15000
+                    }
+                );
+            });
         });
         """
     ), Main(
