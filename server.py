@@ -1365,15 +1365,54 @@ def get(parti: int = 1, spelare: int = 1):
             );
             arrivalSound.preload = "auto";
 
+            function unlockAudio() {
+                if (arrivalSound.dataset.unlocked) {
+                    return Promise.resolve(true);
+                }
+                arrivalSound.dataset.unlocked = "true";
+                arrivalSound.volume = 0;
+                const playing = arrivalSound.play();
+                if (!playing) {
+                    arrivalSound.volume = 1;
+                    return Promise.resolve(true);
+                }
+                return playing.then(() => {
+                    arrivalSound.pause();
+                    arrivalSound.currentTime = 0;
+                    arrivalSound.volume = 1;
+                    return true;
+                }).catch(() => {
+                    arrivalSound.volume = 1;
+                    delete arrivalSound.dataset.unlocked;
+                    return false;
+                });
+            }
+
             function playArrivalSound() {
                 arrivalSound.currentTime = 0;
                 const playback = arrivalSound.play();
                 if (playback) playback.catch(() => {});
             }
 
-            document.getElementById("test-arrival-sound").addEventListener(
-                "click", playArrivalSound
-            );
+            const audioButton = document.getElementById("enable-audio");
+            audioButton.addEventListener("click", () => {
+                unlockAudio().then((unlocked) => {
+                    audioButton.textContent = unlocked
+                        ? "Ljud aktiverat"
+                        : "Aktivera ljud";
+                    document.getElementById("audio-status").textContent =
+                        unlocked
+                            ? "Ljudet är aktiverat."
+                            : "Ljudet kunde inte aktiveras. Tryck igen.";
+                });
+            });
+
+            // iOS tillåter senare uppspelning först efter en användargest.
+            // pointerdown körs även när spelaren väljer en ruta på brädet.
+            boardElement.addEventListener("pointerdown", unlockAudio, {
+                once: true,
+                capture: true
+            });
 
             function markerPosition(file, rank) {
                 let x = file / 8 * 100;
@@ -1777,12 +1816,8 @@ def get(parti: int = 1, spelare: int = 1):
             ),
             P(id="selection-status", aria_live="polite"),
             P(id="navigation-status", aria_live="polite"),
-            Input(
-                type="button",
-                value="Testa ankomstljud",
-                id="test-arrival-sound",
-                title="Spela 10000.mp3",
-            ),
+            Button("Aktivera ljud", type="button", id="enable-audio"),
+            P(id="audio-status", aria_live="polite"),
             P(id="chess-status", aria_live="polite"),
         ),
     )
