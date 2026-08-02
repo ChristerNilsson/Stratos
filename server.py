@@ -1450,6 +1450,7 @@ def get(parti: int = 1, spelare: int = 1):
             let positionWatch = null;
             let compassBearing = null;
             let compassStarted = false;
+            let compassStatus = "Kompass väntar";
             let board;
             let socket;
 
@@ -1470,17 +1471,23 @@ def get(parti: int = 1, spelare: int = 1):
                 const heading = deviceHeading(event);
                 if (heading === null) return;
                 compassBearing = heading;
+                compassStatus = "Kompass aktiv";
             }
 
             async function startCompass() {
-                if (compassStarted || !("DeviceOrientationEvent" in window)) {
-                    return;
+                if (compassStarted) return true;
+                if (!("DeviceOrientationEvent" in window)) {
+                    compassStatus = "Kompass stöds inte";
+                    return false;
                 }
                 try {
                     if (typeof DeviceOrientationEvent.requestPermission === "function") {
                         const permission =
-                            await DeviceOrientationEvent.requestPermission();
-                        if (permission !== "granted") return;
+                            await DeviceOrientationEvent.requestPermission(true);
+                        if (permission !== "granted") {
+                            compassStatus = "Kompassåtkomst nekad";
+                            return false;
+                        }
                     }
                     window.addEventListener(
                         "deviceorientationabsolute",
@@ -1493,8 +1500,12 @@ def get(parti: int = 1, spelare: int = 1):
                         true
                     );
                     compassStarted = true;
-                } catch (_) {
+                    compassStatus = "Kompass söker";
+                    return true;
+                } catch (error) {
                     compassBearing = null;
+                    compassStatus = `Kompassfel: ${error.message || "okänt fel"}`;
+                    return false;
                 }
             }
 
@@ -1794,23 +1805,25 @@ def get(parti: int = 1, spelare: int = 1):
                     position.coords.longitude,
                     target
                 );
-                const bearingDifference = compassBearing === null
+                const relativeDirection = compassBearing === null
                     ? null
-                    : (compassBearing - bearing + 540) % 360 - 180;
+                    : (bearing - compassBearing + 540) % 360 - 180;
                 const compassText = compassBearing === null
-                    ? "–"
-                    : `${compassBearing.toFixed(0)}°`;
-                const differenceText = bearingDifference === null
-                    ? "–"
-                    : `${bearingDifference > 0 ? "+" : ""}` +
-                        `${bearingDifference.toFixed(0)}°`;
+                    ? compassStatus
+                    : `mobil ${compassBearing.toFixed(0)}°`;
+                const directionText = relativeDirection === null
+                    ? "riktning saknas"
+                    : Math.abs(relativeDirection) < 0.5
+                        ? "rakt fram"
+                        : `${relativeDirection > 0 ? "höger" : "vänster"} ` +
+                            `${Math.abs(relativeDirection).toFixed(0)}°`;
                 const arrivalRadius =
                     Number(boardElement.dataset.size) / 32;
                 updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
-                    `${targetSquare} · ${bearing.toFixed(0)}° · ` +
+                    `${targetSquare} · mål ${bearing.toFixed(0)}° · ` +
                     `${distance.toFixed(0)} m · ${compassText} · ` +
-                    `${differenceText}`;
+                    `${directionText}`;
 
                 if (distance > arrivalRadius) return;
                 playSquareSound(targetSquare);
@@ -1838,7 +1851,7 @@ def get(parti: int = 1, spelare: int = 1):
                 }
             }
 
-            function startNavigation(source, target) {
+            async function startNavigation(source, target) {
                 if (!navigator.geolocation) {
                     document.getElementById("navigation-status").textContent =
                         "Webbläsaren saknar stöd för GPS-position.";
@@ -1851,7 +1864,7 @@ def get(parti: int = 1, spelare: int = 1):
                     first: null,
                     second: null
                 };
-                startCompass();
+                await startCompass();
                 prepareSpeech();
                 document.getElementById("navigation-status").textContent =
                     `Hämtar position och avgör om ${source} eller ` +
