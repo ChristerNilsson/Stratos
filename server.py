@@ -1505,20 +1505,15 @@ def get(parti: int = 1, spelare: int = 1):
                     ? null
                     : (travelBearing - bearing + 540) % 360 - 180;
                 const differenceText = bearingDifference === null
-                    ? "avvikelse –"
-                    : `avvikelse ${bearingDifference > 0 ? "+" : ""}` +
+                    ? "–"
+                    : `${bearingDifference > 0 ? "+" : ""}` +
                         `${bearingDifference.toFixed(0)}°`;
                 const arrivalRadius =
                     Number(boardElement.dataset.size) / 32;
                 updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
-                    `Position ${position.coords.latitude.toFixed(6)}, ` +
-                    `${position.coords.longitude.toFixed(6)} · ` +
-                    `mål ${targetSquare} · bäring ${bearing.toFixed(0)}° · ` +
-                    `${differenceText} · ` +
-                    `${distance.toFixed(0)} m kvar · ` +
-                    `radie ${arrivalRadius.toFixed(1)} m · ` +
-                    `noggrannhet ±${position.coords.accuracy.toFixed(0)} m`;
+                    `${targetSquare} · ${bearing.toFixed(0)}° · ` +
+                    `${distance.toFixed(0)} m · ${differenceText}`;
 
                 if (distance > arrivalRadius) return;
                 playArrivalSound();
