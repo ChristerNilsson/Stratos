@@ -1689,15 +1689,20 @@ def get(parti: int = 1, spelare: int = 1):
 
             const audioButton = document.getElementById("enable-audio");
             audioButton.addEventListener("click", () => {
-                unlockAudio().then((unlocked) => {
-                    audioButton.value = unlocked
-                        ? "Ljud aktiverat"
-                        : "Aktivera ljud";
-                    document.getElementById("audio-status").textContent =
-                        unlocked
-                            ? "Ljudet är aktiverat."
-                            : "Ljudet kunde inte aktiveras. Tryck igen.";
-                });
+                // Safari kräver att både ljud- och sensorbehörighet begärs
+                // direkt i klickhändelsen, innan någon annan Promise inväntas.
+                const compassPromise = startCompass();
+                const audioPromise = unlockAudio();
+                Promise.all([audioPromise, compassPromise]).then(
+                    ([unlocked, compassEnabled]) => {
+                        audioButton.value = unlocked && compassEnabled
+                            ? "Ljud och kompass aktiverade"
+                            : "Försök aktivera igen";
+                        document.getElementById("audio-status").textContent =
+                            `${unlocked ? "Ljud aktivt" : "Ljud kunde inte aktiveras"}. ` +
+                            `${compassEnabled ? "Kompass aktiv" : compassStatus}.`;
+                    }
+                );
             });
 
             // iOS tillåter senare uppspelning först efter en användargest.
@@ -2088,7 +2093,7 @@ def get(parti: int = 1, spelare: int = 1):
             P(id="navigation-status", aria_live="polite"),
             Input(
                 type="button",
-                value="Aktivera ljud",
+                value="Aktivera ljud och kompass",
                 id="enable-audio",
             ),
             P(id="audio-status", aria_live="polite"),
