@@ -1258,57 +1258,65 @@ def get(session, plats_id: int):
                     );
                 }
 
-                function centerPoints() {
+                function boardSquares() {
                     const lat = Number(latitude.value);
                     const lon = Number(longitude.value);
                     const cellSize = Number(size.value) / 8;
                     const angle = Number(rotation.value) * Math.PI / 180;
-                    const points = [];
+                    const offsetToLatLng = (fileOffset, rankOffset) => {
+                        const east =
+                            Math.sin(angle) * rankOffset +
+                            Math.sin(angle + Math.PI / 2) * fileOffset;
+                        const north =
+                            Math.cos(angle) * rankOffset +
+                            Math.cos(angle + Math.PI / 2) * fileOffset;
+                        return [
+                            lat + north / 111320,
+                            lon + east /
+                                (111320 * Math.cos(lat * Math.PI / 180))
+                        ];
+                    };
+                    const squares = [];
                     for (let rank = 0; rank < 8; rank++) {
                         for (let file = 0; file < 8; file++) {
-                            const fileOffset = (file - 3.5) * cellSize;
-                            const rankOffset = (rank - 3.5) * cellSize;
-                        const east =
-                                Math.sin(angle) * rankOffset +
-                                Math.sin(angle + Math.PI / 2) * fileOffset;
-                        const north =
-                                Math.cos(angle) * rankOffset +
-                                Math.cos(angle + Math.PI / 2) * fileOffset;
-                            points.push({
+                            const west = (file - 4) * cellSize;
+                            const east = (file - 3) * cellSize;
+                            const south = (rank - 4) * cellSize;
+                            const north = (rank - 3) * cellSize;
+                            squares.push({
                                 name: "abcdefgh"[file] + (rank + 1),
                                 color: (file + rank) % 2 === 0
                                     ? "#000"
                                     : "#fff",
-                                latlng: [
-                                    lat + north / 111320,
-                                    lon + east /
-                                        (111320 * Math.cos(lat * Math.PI / 180))
+                                corners: [
+                                    offsetToLatLng(west, south),
+                                    offsetToLatLng(east, south),
+                                    offsetToLatLng(east, north),
+                                    offsetToLatLng(west, north)
                                 ]
                             });
                         }
                     }
-                    return points;
+                    return squares;
                 }
 
                 function updateMap(fit = false) {
                     const center = [Number(latitude.value), Number(longitude.value)];
                     centerMarker.setLatLng(center);
                     squareCenters.clearLayers();
-                    const points = centerPoints();
-                    const circleRadius = Number(size.value) / 8 * 0.47;
-                    points.forEach((point) => {
-                        L.circle(point.latlng, {
-                            radius: circleRadius,
-                            color: point.color,
+                    const squares = boardSquares();
+                    squares.forEach((square) => {
+                        L.polygon(square.corners, {
+                            color: square.color,
                             weight: 2,
                             opacity: 0.25,
-                            fillColor: point.color,
+                            fillColor: square.color,
                             fillOpacity: 0.25
-                        }).bindTooltip(point.name).addTo(squareCenters);
+                        }).bindTooltip(square.name).addTo(squareCenters);
                     });
                     if (fit) {
                         map.fitBounds(
-                            L.latLngBounds(points.map((point) => point.latlng)),
+                            L.latLngBounds(squares.flatMap((square) => square.corners)),
                             {padding: [30, 30]}
                         );
                     }
@@ -1593,7 +1601,10 @@ def get(parti: int = 1, spelare: int = 1):
                 transform: translate(-50%, -50%);
             }
             #player-marker { background: #1687ff; }
-            .target-marker { background: #e33; }
+            .target-marker {
+                background: #e33;
+                z-index: 100;
+            }
             #chessboard .last-move-from {
                 background: #a9d18e !important;
             }
