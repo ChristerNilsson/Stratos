@@ -1276,6 +1276,9 @@ def get(session, plats_id: int):
                                 Math.cos(angle + Math.PI / 2) * fileOffset;
                             points.push({
                                 name: "abcdefgh"[file] + (rank + 1),
+                                color: (file + rank) % 2 === 0
+                                    ? "#000"
+                                    : "#fff",
                                 latlng: [
                                     lat + north / 111320,
                                     lon + east /
@@ -1296,10 +1299,9 @@ def get(session, plats_id: int):
                     points.forEach((point) => {
                         L.circle(point.latlng, {
                             radius: arrivalRadius,
-                            color: "#b00",
+                            color: point.color,
                             weight: 2,
-                            fillColor: "#e33",
-                            fillOpacity: 0.35
+                            fillOpacity: 0
                         }).bindTooltip(point.name).addTo(squareCenters);
                     });
                     if (fit) {
