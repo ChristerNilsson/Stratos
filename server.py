@@ -1299,7 +1299,7 @@ def get(session, plats_id: int):
                             color: "#b00",
                             weight: 2,
                             fillColor: "#e33",
-                            fillOpacity: 0.8
+                            fillOpacity: 0.35
                         }).bindTooltip(point.name).addTo(squareCenters);
                     });
                     if (fit) {
