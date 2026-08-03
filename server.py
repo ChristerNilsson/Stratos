@@ -409,6 +409,26 @@ def ensure_event_log_schema():
             )
             """
         )
+        db.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS trim_event_log
+            AFTER INSERT ON handelse
+            BEGIN
+              DELETE FROM handelse
+              WHERE timestamp < strftime(
+                '%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days'
+              );
+            END
+            """
+        )
+        db.execute(
+            """
+            DELETE FROM handelse
+            WHERE timestamp < strftime(
+              '%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days'
+            )
+            """
+        )
 
 
 init_db()
@@ -1417,7 +1437,7 @@ def get(parti: int = 1, spelare: int = 1):
                 transform: translate(-50%, -50%);
             }
             #player-marker { background: #1687ff; }
-            #target-marker { background: #e33; }
+            .target-marker { background: #e33; }
             #chessboard .last-move-from {
                 background: #a9d18e !important;
             }
@@ -1740,7 +1760,29 @@ def get(parti: int = 1, spelare: int = 1):
                 marker.hidden = false;
             }
 
-            function updateBoardMarkers(position, targetSquare) {
+            function updateTargetMarkers(targetSquares) {
+                const markers = [
+                    document.getElementById("target-marker-1"),
+                    document.getElementById("target-marker-2")
+                ];
+                markers.forEach((marker, index) => {
+                    const square = targetSquares[index];
+                    if (!square) {
+                        marker.hidden = true;
+                        return;
+                    }
+                    const point = markerPosition(
+                        square.charCodeAt(0) - "a".charCodeAt(0) + 0.5,
+                        Number(square[1]) - 0.5
+                    );
+                    marker.style.left = `${point.x}%`;
+                    marker.style.top = `${point.y}%`;
+                    marker.title = `Mål ${square}`;
+                    marker.hidden = false;
+                });
+            }
+
+            function updateBoardMarkers(position, targetSquares) {
                 const latitude = Number(boardElement.dataset.latitude);
                 const longitude = Number(boardElement.dataset.longitude);
                 const north =
@@ -1761,11 +1803,7 @@ def get(parti: int = 1, spelare: int = 1):
                     fileOffset / squareSize + 4,
                     rankOffset / squareSize + 4
                 );
-                showMarker(
-                    "target-marker",
-                    targetSquare.charCodeAt(0) - "a".charCodeAt(0) + 0.5,
-                    Number(targetSquare[1]) - 0.5
-                );
+                updateTargetMarkers(targetSquares);
             }
 
             function stopNavigation() {
@@ -1774,48 +1812,30 @@ def get(parti: int = 1, spelare: int = 1):
                     positionWatch = null;
                 }
                 document.getElementById("player-marker").hidden = true;
-                document.getElementById("target-marker").hidden = true;
+                updateTargetMarkers([]);
             }
 
             function updateNavigation(position) {
                 if (!pendingMove) return;
-                if (pendingMove.stage === "choosing") {
-                    const fromTarget = squareCenter(pendingMove.from);
-                    const toTarget = squareCenter(pendingMove.to);
-                    const fromDistance = distanceMeters(
-                        position.coords.latitude,
-                        position.coords.longitude,
-                        fromTarget
-                    );
-                    const toDistance = distanceMeters(
-                        position.coords.latitude,
-                        position.coords.longitude,
-                        toTarget
-                    );
-                    pendingMove.first =
-                        fromDistance <= toDistance
-                            ? pendingMove.from
-                            : pendingMove.to;
-                    pendingMove.second =
-                        pendingMove.first === pendingMove.from
-                            ? pendingMove.to
-                            : pendingMove.from;
-                    pendingMove.stage = "first";
-                }
-                const targetSquare =
-                    pendingMove.stage === "first"
-                        ? pendingMove.first
-                        : pendingMove.second;
-                const target = squareCenter(targetSquare);
-                const distance = distanceMeters(
-                    position.coords.latitude,
-                    position.coords.longitude,
-                    target
+                const targets = pendingMove.remaining.map((square) => {
+                    const target = squareCenter(square);
+                    return {
+                        square,
+                        target,
+                        distance: distanceMeters(
+                            position.coords.latitude,
+                            position.coords.longitude,
+                            target
+                        )
+                    };
+                });
+                const nearest = targets.reduce((best, candidate) =>
+                    candidate.distance < best.distance ? candidate : best
                 );
                 const bearing = bearingDegrees(
                     position.coords.latitude,
                     position.coords.longitude,
-                    target
+                    nearest.target
                 );
                 const relativeDirection = compassBearing === null
                     ? null
@@ -1831,30 +1851,35 @@ def get(parti: int = 1, spelare: int = 1):
                             `${Math.abs(relativeDirection).toFixed(0)}°`;
                 const arrivalRadius =
                     Number(boardElement.dataset.size) / 16;
-                updateBoardMarkers(position, targetSquare);
+                updateBoardMarkers(position, pendingMove.remaining);
                 document.getElementById("navigation-status").textContent =
-                    `${targetSquare} · mål ${bearing.toFixed(0)}° · ` +
-                    `${distance.toFixed(0)} m · ${compassText} · ` +
-                    `${directionText}`;
+                    `${pendingMove.remaining.join(" eller ")} · närmast ${nearest.square} · ` +
+                    `mål ${bearing.toFixed(0)}° · ${nearest.distance.toFixed(0)} m · ` +
+                    `${compassText} · ${directionText}`;
 
-                if (distance > arrivalRadius) return;
-                playSquareSound(targetSquare);
-                if (pendingMove.stage === "first") {
-                    const visited = pendingMove.first;
-                    pendingMove.stage = "second";
-                    updateBoardMarkers(position, pendingMove.second);
-                    const nextTarget = squareCenter(pendingMove.second);
+                const arrived = targets.reduce((best, candidate) => {
+                    if (candidate.distance > arrivalRadius) return best;
+                    return !best || candidate.distance < best.distance
+                        ? candidate
+                        : best;
+                }, null);
+                if (!arrived) return;
+
+                playSquareSound(arrived.square);
+                pendingMove.remaining = pendingMove.remaining.filter(
+                    (square) => square !== arrived.square
+                );
+                updateBoardMarkers(position, pendingMove.remaining);
+                if (pendingMove.remaining.length > 0) {
                     document.getElementById("navigation-status").textContent =
-                        `Framkomst till ${visited} bekräftad. ` +
-                        `Nytt mål: ${pendingMove.second} ` +
-                        `(${nextTarget.latitude.toFixed(6)}, ` +
-                        `${nextTarget.longitude.toFixed(6)}).`;
+                        `Framkomst till ${arrived.square} bekräftad. ` +
+                        `Kvar att besöka: ${pendingMove.remaining[0]}.`;
                 } else {
                     const move = pendingMove;
                     pendingMove = null;
                     stopNavigation();
                     document.getElementById("navigation-status").textContent =
-                        `Framkomst till ${targetSquare} bekräftad. Draget skickas.`;
+                        `Framkomst till ${arrived.square} bekräftad. Draget skickas.`;
                     socket.send(JSON.stringify({
                         type: "move",
                         from: move.from,
@@ -1872,15 +1897,13 @@ def get(parti: int = 1, spelare: int = 1):
                 pendingMove = {
                     from: source,
                     to: target,
-                    stage: "choosing",
-                    first: null,
-                    second: null
+                    remaining: [source, target]
                 };
+                updateTargetMarkers(pendingMove.remaining);
                 await startCompass();
                 prepareSpeech();
                 document.getElementById("navigation-status").textContent =
-                    `Hämtar position och avgör om ${source} eller ` +
-                    `${target} ligger närmast.`;
+                    `Besök ${source} och ${target} i valfri ordning.`;
                 positionWatch = navigator.geolocation.watchPosition(
                     updateNavigation,
                     (error) => {
@@ -2083,7 +2106,8 @@ def get(parti: int = 1, spelare: int = 1):
                     ),
                 ),
                 Div(id="player-marker", cls="board-marker", title="Din position", hidden=True),
-                Div(id="target-marker", cls="board-marker", title="Mål", hidden=True),
+                Div(id="target-marker-1", cls="board-marker target-marker", title="Mål", hidden=True),
+                Div(id="target-marker-2", cls="board-marker target-marker", title="Mål", hidden=True),
                 id="board-map",
             ),
             Div(
