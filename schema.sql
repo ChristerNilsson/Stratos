@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS plats (
   latitud    REAL NOT NULL,
   longitud   REAL NOT NULL,
   rotation   INTEGER NOT NULL DEFAULT 0 CHECK (rotation BETWEEN -45 AND 45),
-  storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
+  storlek    REAL NOT NULL DEFAULT 100 CHECK (storlek > 0),
   UNIQUE (latitud, longitud, storlek)
 );
 
@@ -58,13 +58,20 @@ CREATE TABLE IF NOT EXISTS handelse (
   text      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS schema_migration (
+  namn TEXT PRIMARY KEY
+);
+
+INSERT OR IGNORE INTO schema_migration (namn)
+VALUES ('square_edge_size_v1');
+
 -- Exempeldata för det parti som visas i klienten.
 INSERT OR IGNORE INTO spelare (id, namn, telefon, mail) VALUES
   (1, 'Sture Stolpe', '+46 70 123 45 67', 'sture@example.se'),
   (2, 'Örjan Kärrsgård', '+46 70 987 65 43', 'orjan@example.se');
 
 INSERT OR IGNORE INTO plats (id, namn, latitud, longitud, storlek) VALUES
-  (1, 'Skarpnäck 800', 59.26996327, 18.14979067, 800);
+  (1, 'Skarpnäck 100', 59.26996327, 18.14979067, 100);
 
 INSERT OR IGNORE INTO parti (
   id, plats_id, rotation,

@@ -71,6 +71,7 @@ def init_db():
     migrate_location_schema()
     ensure_location_name_schema()
     ensure_location_rotation_schema()
+    migrate_square_size_schema()
     ensure_game_date_schema()
     ensure_clock_schema()
     ensure_real_clock_schema()
@@ -99,7 +100,7 @@ def migrate_location_schema():
               longitud   REAL NOT NULL,
               rotation   INTEGER NOT NULL DEFAULT 0
                          CHECK (rotation BETWEEN -45 AND 45),
-              storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
+              storlek    REAL NOT NULL DEFAULT 100 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
 
@@ -214,7 +215,7 @@ def ensure_location_rotation_schema():
               longitud   REAL NOT NULL,
               rotation   INTEGER NOT NULL DEFAULT 0
                          CHECK (rotation BETWEEN -45 AND 45),
-              storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
+              storlek    REAL NOT NULL DEFAULT 100 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
 
@@ -237,6 +238,32 @@ def ensure_location_rotation_schema():
 
             COMMIT;
             """
+        )
+
+
+def migrate_square_size_schema():
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migration (
+              namn TEXT PRIMARY KEY
+            )
+            """
+        )
+        migrated = db.execute(
+            "SELECT 1 FROM schema_migration WHERE namn = ?",
+            ("square_edge_size_v1",),
+        ).fetchone()
+        if migrated:
+            return
+        db.execute("UPDATE plats SET storlek = storlek / 8.0")
+        db.execute(
+            "UPDATE plats SET namn = 'Skarpnäck 100' "
+            "WHERE namn = 'Skarpnäck 800'"
+        )
+        db.execute(
+            "INSERT INTO schema_migration (namn) VALUES (?)",
+            ("square_edge_size_v1",),
         )
 
 
@@ -934,7 +961,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Latitud", Input(type="number", step="0.0000001", name="latitud", value=f'{selected_location["latitud"]:.7f}' if selected_location else "", required=True)),
         Label("Longitud", Input(type="number", step="0.0000001", name="longitud", value=f'{selected_location["longitud"]:.7f}' if selected_location else "", required=True)),
         Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=-45, max=45, required=True)),
-        Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
+        Label("Rutans kant (m)", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 100, required=True)),
         Input(type="button", value="Använd min Position", id="use-current-position"),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"),
         P(id="current-position-status", aria_live="polite"),
@@ -943,7 +970,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         id="location-editor",
     )
     location_table = Table(
-        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th())),
+        Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Rutans kant (m)"), Th())),
         Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(f'{p["latitud"]:.7f}'), Td(f'{p["longitud"]:.7f}'), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
             A("✏️", href=f'/admin/plats/{p["id"]}/karta', title="Redigera på karta", aria_label="Redigera på karta", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
@@ -1271,7 +1298,7 @@ def get(session, plats_id: int):
                 function boardSquares() {
                     const lat = Number(latitude.value);
                     const lon = Number(longitude.value);
-                    const cellSize = Number(size.value) / 8;
+                    const cellSize = Number(size.value);
                     const angle = Number(rotation.value) * Math.PI / 180;
                     const offsetToLatLng = (fileOffset, rankOffset) => {
                         const east =
@@ -1423,7 +1450,7 @@ def get(session, plats_id: int):
                     aria_label="Flytta centrumpunkten",
                 ),
                 Label("Rotation (°)", Input(type="number", name="rotation", min=-45, max=45, value=location["rotation"], required=True)),
-                Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
+                Label("Rutans kant (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
                 Input(type="submit", value="Spara"),
                 id="location-form", method="post", action="/admin/plats/save",
             ),
@@ -1809,8 +1836,7 @@ def game_view(parti: int, spelare: int | None):
             }
 
             function squareCenter(square) {
-                const size = Number(boardElement.dataset.size);
-                const squareSize = size / 8;
+                const squareSize = Number(boardElement.dataset.size);
                 const fileOffset =
                     (square.charCodeAt(0) - "a".charCodeAt(0) - 3.5) *
                     squareSize;
@@ -2009,7 +2035,7 @@ def game_view(parti: int, spelare: int | None):
                 const fileOffset =
                     east * Math.sin(angle + Math.PI / 2) +
                     north * Math.cos(angle + Math.PI / 2);
-                const squareSize = Number(boardElement.dataset.size) / 8;
+                const squareSize = Number(boardElement.dataset.size);
                 showMarker(
                     "player-marker",
                     fileOffset / squareSize + 4,
@@ -2059,7 +2085,7 @@ def game_view(parti: int, spelare: int | None):
                     ? "–"
                     : `${relativeDegrees === 0 ? 0 : relativeDegrees}°`;
                 const arrivalRadius =
-                    Number(boardElement.dataset.size) / 16;
+                    Number(boardElement.dataset.size) / 2;
                 updateBoardMarkers(position, pendingMove.remaining);
                 document.getElementById("navigation-status").textContent =
                     `${pendingMove.remaining.join(" · ")} · ` +
