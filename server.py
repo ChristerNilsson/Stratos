@@ -1157,8 +1157,7 @@ def get(session, plats_id: int):
             .center-arrows {
                 display: grid;
                 grid-template-areas:
-                    "counterclockwise . clockwise"
-                    ". north ."
+                    "counterclockwise north clockwise"
                     "west . east"
                     ". south .";
                 gap: .2rem;
