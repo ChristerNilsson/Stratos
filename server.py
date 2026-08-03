@@ -98,7 +98,7 @@ def migrate_location_schema():
               latitud    REAL NOT NULL,
               longitud   REAL NOT NULL,
               rotation   INTEGER NOT NULL DEFAULT 0
-                         CHECK (rotation BETWEEN -90 AND 90),
+                         CHECK (rotation BETWEEN -45 AND 45),
               storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
@@ -191,7 +191,7 @@ def ensure_location_rotation_schema():
                 """
                 ALTER TABLE plats
                 ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0
-                CHECK (rotation BETWEEN -90 AND 90)
+                CHECK (rotation BETWEEN -45 AND 45)
                 """
             )
             return
@@ -199,7 +199,7 @@ def ensure_location_rotation_schema():
         table_sql = db.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='plats'"
         ).fetchone()[0]
-        if "BETWEEN -90 AND 90" in table_sql:
+        if "BETWEEN -45 AND 45" in table_sql:
             return
 
         db.execute("PRAGMA foreign_keys = OFF")
@@ -213,7 +213,7 @@ def ensure_location_rotation_schema():
               latitud    REAL NOT NULL,
               longitud   REAL NOT NULL,
               rotation   INTEGER NOT NULL DEFAULT 0
-                         CHECK (rotation BETWEEN -90 AND 90),
+                         CHECK (rotation BETWEEN -45 AND 45),
               storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
@@ -223,7 +223,7 @@ def ensure_location_rotation_schema():
             )
             SELECT
               id, namn, latitud, longitud,
-              MAX(-90, MIN(90,
+              MAX(-45, MIN(45,
                 CASE
                   WHEN rotation > 180 THEN rotation - 360
                   ELSE rotation
@@ -872,7 +872,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             Input(name="namn", value=p["namn"], required=True),
             Input(type="number", step="any", name="latitud", value=p["latitud"], required=True),
             Input(type="number", step="any", name="longitud", value=p["longitud"], required=True),
-            Input(type="number", name="rotation", value=p["rotation"], min=-90, max=90, required=True),
+            Input(type="number", name="rotation", value=p["rotation"], min=-45, max=45, required=True),
             Input(type="number", step="any", name="storlek", value=p["storlek"], required=True),
             Input(type="submit", value="Spara"),
             Input(type="submit", value="Ta bort", formaction="/admin/plats/delete"),
@@ -923,7 +923,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         Label("Namn", Input(name="namn", value=selected_location["namn"] if selected_location else "", required=True)),
         Label("Latitud", Input(type="number", step="0.0000001", name="latitud", value=f'{selected_location["latitud"]:.7f}' if selected_location else "", required=True)),
         Label("Longitud", Input(type="number", step="0.0000001", name="longitud", value=f'{selected_location["longitud"]:.7f}' if selected_location else "", required=True)),
-        Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=-90, max=90, required=True)),
+        Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=-45, max=45, required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
         Input(type="button", value="Använd min Position", id="use-current-position"),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"),
@@ -1104,8 +1104,8 @@ def post(session, id: int):
 @rt("/admin/plats/save")
 def post(session, namn: str, latitud: float, longitud: float, rotation: int, storlek: float, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
-    if rotation < -90 or rotation > 90:
-        return PlainTextResponse("Rotation måste vara mellan -90 och +90 grader.", status_code=400)
+    if rotation < -45 or rotation > 45:
+        return PlainTextResponse("Rotation måste vara mellan -45 och +45 grader.", status_code=400)
     latitud = round(latitud, 7)
     longitud = round(longitud, 7)
     with admin_connection() as db:
@@ -1340,8 +1340,8 @@ def get(session, plats_id: int):
                 );
                 function rotateCenter(change) {
                     rotation.value = Math.max(
-                        -90,
-                        Math.min(90, Number(rotation.value) + change)
+                        -45,
+                        Math.min(45, Number(rotation.value) + change)
                     );
                     updateMap();
                 }
@@ -1385,7 +1385,7 @@ def get(session, plats_id: int):
                     cls="center-arrows",
                     aria_label="Flytta centrumpunkten",
                 ),
-                Label("Rotation (°)", Input(type="number", name="rotation", min=-90, max=90, value=location["rotation"], required=True)),
+                Label("Rotation (°)", Input(type="number", name="rotation", min=-45, max=45, value=location["rotation"], required=True)),
                 Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
                 Input(type="submit", value="Spara"),
                 id="location-form", method="post", action="/admin/plats/save",
