@@ -1301,8 +1301,9 @@ def get(session, plats_id: int):
                             radius: circleRadius,
                             color: point.color,
                             weight: 2,
+                            opacity: 0.25,
                             fillColor: point.color,
-                            fillOpacity: 0.5
+                            fillOpacity: 0.25
                         }).bindTooltip(point.name).addTo(squareCenters);
                     });
                     if (fit) {
