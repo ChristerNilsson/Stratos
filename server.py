@@ -674,29 +674,6 @@ def format_clock(seconds):
     return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 
-def get_database_tables():
-    with sqlite3.connect(DB_PATH) as db:
-        table_names = [
-            row[0]
-            for row in db.execute(
-                """
-                SELECT name
-                FROM sqlite_master
-                WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-                ORDER BY name
-                """
-            )
-        ]
-
-        tables = []
-        for table_name in table_names:
-            quoted_name = '"' + table_name.replace('"', '""') + '"'
-            cursor = db.execute(f"SELECT * FROM {quoted_name}")
-            columns = [column[0] for column in cursor.description]
-            tables.append((table_name, columns, cursor.fetchall()))
-        return tables
-
-
 def admin_allowed(session):
     return session.get("admin") is True
 
@@ -810,6 +787,10 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             ORDER BY parti.id DESC
             """
         ).fetchall()
+        events = db.execute(
+            "SELECT id, timestamp, person, text FROM handelse "
+            "ORDER BY timestamp DESC, id DESC"
+        ).fetchall()
 
     player_forms = [
         Form(
@@ -921,6 +902,22 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="⟳", title="Återställ parti", aria_label="Återställ parti", cls="reset-icon", onclick="return confirm('Återställ partiet och radera alla drag?')"),
                 method="post", action="/admin/parti/reset", cls="row-action"))) for g in games)),
     )
+    event_table = Table(
+        Thead(Tr(Th("ID"), Th("Tid"), Th("Person"), Th("Händelse"))),
+        Tbody(*(
+            Tr(Td(event["id"]), Td(event["timestamp"]), Td(event["person"]), Td(event["text"]))
+            for event in events
+        )),
+    )
+    clear_event_log_form = Form(
+        Input(
+            type="submit",
+            value="Nollställ loggen",
+            onclick="return confirm('Nollställ loggen? Alla logghändelser raderas.')",
+        ),
+        method="post",
+        action="/admin/logg/clear",
+    )
     return Title("Admin"), admin_style(), Script(
         """
         document.addEventListener("DOMContentLoaded", () => {
@@ -979,15 +976,25 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
         """
     ), Main(
         H1("Administration"),
-        Div(A("Spelare", href="#spelare", cls="admin-tab", data_tab="spelare"), A("Platser", href="#platser", cls="admin-tab", data_tab="platser"), A("Partier", href="#partier", cls="admin-tab", data_tab="partier"), id="admin-nav"),
+        Div(A("Spelare", href="#spelare", cls="admin-tab", data_tab="spelare"), A("Platser", href="#platser", cls="admin-tab", data_tab="platser"), A("Partier", href="#partier", cls="admin-tab", data_tab="partier"), A("Logg", href="#logg", cls="admin-tab", data_tab="logg"), id="admin-nav"),
         Div(H2("Spelare"), player_table, player_editor, cls="admin-section", data_section="spelare"),
         Div(H2("Platser"), location_table, location_editor, cls="admin-section", data_section="platser"),
         Div(H2("Partier"), game_table, game_editor, cls="admin-section", data_section="partier"),
+        Div(H2("Logg"), clear_event_log_form, event_table, cls="admin-section", data_section="logg"),
     )
 
 
 def require_admin(session):
     return admin_allowed(session) or RedirectResponse("/admin/login", status_code=303)
+
+
+@rt("/admin/logg/clear")
+def post(session):
+    if not admin_allowed(session):
+        return RedirectResponse("/admin/login", status_code=303)
+    with admin_connection() as db:
+        db.execute("DELETE FROM handelse")
+    return admin_redirect("logg")
 
 
 @rt("/admin/spelare/save")
@@ -2099,56 +2106,6 @@ def get(parti: int = 1, spelare: int = 1):
             P(id="audio-status", aria_live="polite"),
             P(id="chess-status", aria_live="polite"),
         ),
-    )
-
-
-@rt("/db")
-def db_view(session):
-    if not admin_allowed(session):
-        return RedirectResponse("/admin/login", status_code=303)
-    sections = []
-    for table_name, columns, rows in get_database_tables():
-        body = (
-            Tbody(
-                *(
-                    Tr(
-                        *(
-                            Td("" if value is None else str(value))
-                            for value in row
-                        )
-                    )
-                    for row in rows
-                )
-            )
-            if rows
-            else Tbody(Tr(Td("Tabellen är tom", colspan=str(len(columns)))))
-        )
-        sections.extend(
-            (
-                H2(table_name),
-                Table(
-                    Thead(Tr(*(Th(column) for column in columns))),
-                    body,
-                ),
-            )
-        )
-
-    return (
-        Title("Databas"),
-        Style(
-            """
-            main { padding: 1rem; }
-            table { border-collapse: collapse; margin-bottom: 2rem; }
-            th, td {
-                border: 1px solid #aaa;
-                padding: .4rem .6rem;
-                text-align: left;
-                white-space: nowrap;
-            }
-            th { background: #eee; }
-            """
-        ),
-        Main(H1("Databasens innehåll"), *sections),
     )
 
 
