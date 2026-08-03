@@ -1853,8 +1853,8 @@ def get(parti: int = 1, spelare: int = 1):
                     Number(boardElement.dataset.size) / 16;
                 updateBoardMarkers(position, pendingMove.remaining);
                 document.getElementById("navigation-status").textContent =
-                    `${pendingMove.remaining.join(" eller ")} · närmast ${nearest.square} · ` +
-                    `mål ${bearing.toFixed(0)}° · ${nearest.distance.toFixed(0)} m · ` +
+                    `${pendingMove.remaining.join(" · ")} · ` +
+                    `${bearing.toFixed(0)}° · ${nearest.distance.toFixed(0)} m · ` +
                     `${compassText} · ${directionText}`;
 
                 const arrived = targets.reduce((best, candidate) => {
