@@ -521,6 +521,16 @@ def get_game(game_id, player_id):
         ).fetchone()
 
 
+def get_game_player_id(game_id, color):
+    column = "vit_id" if color == "white" else "svart_id"
+    with sqlite3.connect(DB_PATH) as db:
+        row = db.execute(
+            f"SELECT {column} FROM parti WHERE id = ?",
+            (game_id,),
+        ).fetchone()
+    return row[0] if row else None
+
+
 def load_position(db, game_id):
     board = chess.Board()
     moves = []
@@ -958,7 +968,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     game_table = Table(
         Thead(Tr(Th("ID"), Th("Datum"), Th("Plats"), Th("Vit"), Th("Svart"), Th("Status"), Th())),
         Tbody(*(Tr(Td(g["id"]), Td(g["datum"]), Td(g["plats_namn"]), Td(g["vit_namn"]), Td(g["svart_namn"]), Td(g["status"]), Td(
-            A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
+            A("Vit", href=f'/white/{g["id"]}'), " · ", A("Svart", href=f'/black/{g["id"]}'), " · ", A("Drag", href=f'/admin/parti/{g["id"]}'), " · ", A("PGN", href=f'/admin/parti/{g["id"]}/pgn'), " · ",
             A("✏️", href=f'/admin?edit_parti={g["id"]}#partier', title="Redigera", aria_label="Redigera", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=g["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/parti/delete", cls="row-action"), " ", Form(
@@ -1544,15 +1554,35 @@ def get(session, parti_id: int, sida: int = 1):
     )
 
 
+@rt("/white/{parti_id}")
+def get(parti_id: int):
+    return game_view(parti_id, get_game_player_id(parti_id, "white"))
+
+
+@rt("/black/{parti_id}")
+def get(parti_id: int):
+    return game_view(parti_id, get_game_player_id(parti_id, "black"))
+
+
 @rt("/")
-def get(parti: int = 1, spelare: int = 1):
+def get(parti: int = 1, spelare: int = 0):
+    if not spelare:
+        return RedirectResponse(f"/white/{parti}", status_code=303)
+    game = get_game(parti, spelare)
+    if game is None:
+        return game_view(parti, spelare)
+    color = "white" if spelare == game["vit_id"] else "black"
+    return RedirectResponse(f"/{color}/{parti}", status_code=303)
+
+
+def game_view(parti: int, spelare: int | None):
     game = get_game(parti, spelare)
     if game is None:
         return (
             Title("Partiet hittades inte"),
             Main(
                 H1("Partiet hittades inte"),
-                P("Kontrollera parametrarna parti och spelare i URL:en."),
+                P("Kontrollera parti-ID och färg i URL:en."),
             ),
         )
 
