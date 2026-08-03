@@ -2022,22 +2022,19 @@ def get(parti: int = 1, spelare: int = 1):
                 const relativeDirection = compassBearing === null
                     ? null
                     : (bearing - compassBearing + 540) % 360 - 180;
-                const compassText = compassBearing === null
-                    ? compassStatus
-                    : `mobil ${compassBearing.toFixed(0)}°`;
+                const relativeDegrees = relativeDirection === null
+                    ? null
+                    : Math.round(relativeDirection);
                 const directionText = relativeDirection === null
-                    ? "riktning saknas"
-                    : Math.abs(relativeDirection) < 0.5
-                        ? "rakt fram"
-                        : `${relativeDirection > 0 ? "höger" : "vänster"} ` +
-                            `${Math.abs(relativeDirection).toFixed(0)}°`;
+                    ? "–"
+                    : `${relativeDegrees === 0 ? 0 : relativeDegrees}°`;
                 const arrivalRadius =
                     Number(boardElement.dataset.size) / 16;
                 updateBoardMarkers(position, pendingMove.remaining);
                 document.getElementById("navigation-status").textContent =
                     `${pendingMove.remaining.join(" · ")} · ` +
                     `${bearing.toFixed(0)}° · ${nearest.distance.toFixed(0)} m · ` +
-                    `${compassText} · ${directionText}`;
+                    `${directionText}`;
 
                 const arrived = targets.reduce((best, candidate) => {
                     if (candidate.distance > arrivalRadius) return best;
