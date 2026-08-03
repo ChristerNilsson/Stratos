@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS plats (
   namn       TEXT NOT NULL,
   latitud    REAL NOT NULL,
   longitud   REAL NOT NULL,
-  rotation   INTEGER NOT NULL DEFAULT 0 CHECK (rotation BETWEEN 0 AND 359),
+  rotation   INTEGER NOT NULL DEFAULT 0 CHECK (rotation BETWEEN -90 AND 90),
   storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
   UNIQUE (latitud, longitud, storlek)
 );

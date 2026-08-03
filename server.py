@@ -98,7 +98,7 @@ def migrate_location_schema():
               latitud    REAL NOT NULL,
               longitud   REAL NOT NULL,
               rotation   INTEGER NOT NULL DEFAULT 0
-                         CHECK (rotation BETWEEN 0 AND 359),
+                         CHECK (rotation BETWEEN -90 AND 90),
               storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
               UNIQUE (latitud, longitud, storlek)
             );
@@ -186,13 +186,56 @@ def ensure_location_name_schema():
 def ensure_location_rotation_schema():
     with sqlite3.connect(DB_PATH) as db:
         columns = {row[1] for row in db.execute("PRAGMA table_info(plats)")}
-        if "rotation" in columns:
+        if "rotation" not in columns:
+            db.execute(
+                """
+                ALTER TABLE plats
+                ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0
+                CHECK (rotation BETWEEN -90 AND 90)
+                """
+            )
             return
-        db.execute(
+
+        table_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='plats'"
+        ).fetchone()[0]
+        if "BETWEEN -90 AND 90" in table_sql:
+            return
+
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.executescript(
             """
-            ALTER TABLE plats
-            ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0
-            CHECK (rotation BETWEEN 0 AND 359)
+            BEGIN IMMEDIATE;
+
+            CREATE TABLE plats_new (
+              id         INTEGER PRIMARY KEY,
+              namn       TEXT NOT NULL DEFAULT '',
+              latitud    REAL NOT NULL,
+              longitud   REAL NOT NULL,
+              rotation   INTEGER NOT NULL DEFAULT 0
+                         CHECK (rotation BETWEEN -90 AND 90),
+              storlek    REAL NOT NULL DEFAULT 800 CHECK (storlek > 0),
+              UNIQUE (latitud, longitud, storlek)
+            );
+
+            INSERT INTO plats_new (
+              id, namn, latitud, longitud, rotation, storlek
+            )
+            SELECT
+              id, namn, latitud, longitud,
+              MAX(-90, MIN(90,
+                CASE
+                  WHEN rotation > 180 THEN rotation - 360
+                  ELSE rotation
+                END
+              )),
+              storlek
+            FROM plats;
+
+            DROP TABLE plats;
+            ALTER TABLE plats_new RENAME TO plats;
+
+            COMMIT;
             """
         )
 
@@ -829,7 +872,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             Input(name="namn", value=p["namn"], required=True),
             Input(type="number", step="any", name="latitud", value=p["latitud"], required=True),
             Input(type="number", step="any", name="longitud", value=p["longitud"], required=True),
-            Input(type="number", name="rotation", value=p["rotation"], min=0, max=359, required=True),
+            Input(type="number", name="rotation", value=p["rotation"], min=-90, max=90, required=True),
             Input(type="number", step="any", name="storlek", value=p["storlek"], required=True),
             Input(type="submit", value="Spara"),
             Input(type="submit", value="Ta bort", formaction="/admin/plats/delete"),
@@ -878,9 +921,9 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     location_editor = Form(
         Input(type="hidden", name="id", value=selected_location["id"] if selected_location else 0),
         Label("Namn", Input(name="namn", value=selected_location["namn"] if selected_location else "", required=True)),
-        Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=f'{selected_location["latitud"]:.5f}' if selected_location else "", required=True)),
-        Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=f'{selected_location["longitud"]:.5f}' if selected_location else "", required=True)),
-        Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=0, max=359, required=True)),
+        Label("Latitud", Input(type="number", step="0.0000001", name="latitud", value=f'{selected_location["latitud"]:.7f}' if selected_location else "", required=True)),
+        Label("Longitud", Input(type="number", step="0.0000001", name="longitud", value=f'{selected_location["longitud"]:.7f}' if selected_location else "", required=True)),
+        Label("Rotation (°)", Input(type="number", name="rotation", value=selected_location["rotation"] if selected_location else 0, min=-90, max=90, required=True)),
         Label("Storlek", Input(type="number", step="any", name="storlek", value=selected_location["storlek"] if selected_location else 800, required=True)),
         Input(type="button", value="Använd min Position", id="use-current-position"),
         Input(type="submit", value="Spara ändringar" if selected_location else "Lägg till"),
@@ -891,7 +934,7 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
     )
     location_table = Table(
         Thead(Tr(Th("ID"), Th("Namn"), Th("Latitud"), Th("Longitud"), Th("Rotation"), Th("Storlek"), Th())),
-        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(f'{p["latitud"]:.5f}'), Td(f'{p["longitud"]:.5f}'), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
+        Tbody(*(Tr(Td(p["id"]), Td(p["namn"]), Td(f'{p["latitud"]:.7f}'), Td(f'{p["longitud"]:.7f}'), Td(f'{p["rotation"]}°'), Td(p["storlek"]), Td(
             A("✏️", href=f'/admin/plats/{p["id"]}/karta', title="Redigera på karta", aria_label="Redigera på karta", cls="icon-action"), " ", Form(
                 Input(type="hidden", name="id", value=p["id"]), Input(type="submit", value="🗑️", title="Ta bort", aria_label="Ta bort"),
                 method="post", action="/admin/plats/delete", cls="row-action"))) for p in reversed(locations))),
@@ -960,6 +1003,24 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
             const positionButton = document.getElementById("use-current-position");
             const positionStatus = document.getElementById("current-position-status");
             const locationForm = document.getElementById("location-editor");
+            function pasteCoordinates(event) {
+                const match = event.clipboardData.getData("text").match(
+                    /^\\s*\\(?\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*[,;]\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*\\)?\\s*$/
+                );
+                if (!match) return;
+                const latitude = Number(match[1]);
+                const longitude = Number(match[2]);
+                if (
+                    latitude < -90 || latitude > 90 ||
+                    longitude < -180 || longitude > 180
+                ) return;
+                event.preventDefault();
+                locationForm.elements.latitud.value = latitude.toFixed(7);
+                locationForm.elements.longitud.value = longitude.toFixed(7);
+                positionStatus.textContent = "Koordinaterna infogades.";
+            }
+            locationForm.elements.latitud.addEventListener("paste", pasteCoordinates);
+            locationForm.elements.longitud.addEventListener("paste", pasteCoordinates);
             positionButton.addEventListener("click", () => {
                 if (!navigator.geolocation) {
                     positionStatus.textContent =
@@ -971,9 +1032,9 @@ def get(session, edit_spelare: int = 0, edit_plats: int = 0, edit_parti: int = 0
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         locationForm.elements.latitud.value =
-                            position.coords.latitude.toFixed(5);
+                            position.coords.latitude.toFixed(7);
                         locationForm.elements.longitud.value =
-                            position.coords.longitude.toFixed(5);
+                            position.coords.longitude.toFixed(7);
                         positionStatus.textContent =
                             `Position infogad (noggrannhet ` +
                             `${position.coords.accuracy.toFixed(0)} m).`;
@@ -1043,8 +1104,10 @@ def post(session, id: int):
 @rt("/admin/plats/save")
 def post(session, namn: str, latitud: float, longitud: float, rotation: int, storlek: float, id: int = 0):
     if not admin_allowed(session): return RedirectResponse("/admin/login", status_code=303)
-    latitud = round(latitud, 5)
-    longitud = round(longitud, 5)
+    if rotation < -90 or rotation > 90:
+        return PlainTextResponse("Rotation måste vara mellan -90 och +90 grader.", status_code=400)
+    latitud = round(latitud, 7)
+    longitud = round(longitud, 7)
     with admin_connection() as db:
         if id:
             db.execute("UPDATE plats SET namn=?,latitud=?,longitud=?,rotation=?,storlek=? WHERE id=?", (namn, latitud, longitud, rotation, storlek, id))
@@ -1082,6 +1145,32 @@ def get(session, plats_id: int):
             label { display: grid; gap: .2rem; }
             input { padding: .45rem; }
             input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+            input[name="latitud"]::-webkit-inner-spin-button,
+            input[name="latitud"]::-webkit-outer-spin-button,
+            input[name="longitud"]::-webkit-inner-spin-button,
+            input[name="longitud"]::-webkit-outer-spin-button,
+            input[name="rotation"]::-webkit-inner-spin-button,
+            input[name="rotation"]::-webkit-outer-spin-button {
+                margin: 0;
+                -webkit-appearance: none;
+            }
+            .center-arrows {
+                display: grid;
+                grid-template-areas:
+                    "counterclockwise . clockwise"
+                    ". north ."
+                    "west . east"
+                    ". south .";
+                gap: .2rem;
+                align-self: center;
+            }
+            .center-arrows input { min-width: 3rem; padding: .3rem; }
+            #move-north { grid-area: north; }
+            #move-east { grid-area: east; }
+            #move-south { grid-area: south; }
+            #move-west { grid-area: west; }
+            #rotate-counterclockwise { grid-area: counterclockwise; }
+            #rotate-clockwise { grid-area: clockwise; }
             """
         ),
         Script(
@@ -1092,6 +1181,24 @@ def get(session, plats_id: int):
                 const longitude = form.elements.longitud;
                 const size = form.elements.storlek;
                 const rotation = form.elements.rotation;
+                function pasteCoordinates(event) {
+                    const match = event.clipboardData.getData("text").match(
+                        /^\\s*\\(?\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*[,;]\\s*([+-]?\\d+(?:\\.\\d+)?)\\s*\\)?\\s*$/
+                    );
+                    if (!match) return;
+                    const pastedLatitude = Number(match[1]);
+                    const pastedLongitude = Number(match[2]);
+                    if (
+                        pastedLatitude < -90 || pastedLatitude > 90 ||
+                        pastedLongitude < -180 || pastedLongitude > 180
+                    ) return;
+                    event.preventDefault();
+                    latitude.value = pastedLatitude.toFixed(7);
+                    longitude.value = pastedLongitude.toFixed(7);
+                    updateMap();
+                }
+                latitude.addEventListener("paste", pasteCoordinates);
+                longitude.addEventListener("paste", pasteCoordinates);
                 const map = L.map("location-map").setView(
                     [Number(latitude.value), Number(longitude.value)], 15
                 );
@@ -1205,10 +1312,46 @@ def get(session, plats_id: int):
                 }
 
                 function setCenter(latlng) {
-                    latitude.value = latlng.lat.toFixed(5);
-                    longitude.value = latlng.lng.toFixed(5);
+                    latitude.value = latlng.lat.toFixed(7);
+                    longitude.value = latlng.lng.toFixed(7);
                     updateMap();
                 }
+
+                function moveCenter(northMeters, eastMeters) {
+                    const lat = Number(latitude.value);
+                    const lon = Number(longitude.value);
+                    setCenter({
+                        lat: lat + northMeters / 111320,
+                        lng: lon + eastMeters /
+                            (111320 * Math.cos(lat * Math.PI / 180))
+                    });
+                }
+
+                document.getElementById("move-north").addEventListener(
+                    "click", () => moveCenter(1, 0)
+                );
+                document.getElementById("move-east").addEventListener(
+                    "click", () => moveCenter(0, 1)
+                );
+                document.getElementById("move-south").addEventListener(
+                    "click", () => moveCenter(-1, 0)
+                );
+                document.getElementById("move-west").addEventListener(
+                    "click", () => moveCenter(0, -1)
+                );
+                function rotateCenter(change) {
+                    rotation.value = Math.max(
+                        -90,
+                        Math.min(90, Number(rotation.value) + change)
+                    );
+                    updateMap();
+                }
+                document.getElementById("rotate-counterclockwise").addEventListener(
+                    "click", () => rotateCenter(-1)
+                );
+                document.getElementById("rotate-clockwise").addEventListener(
+                    "click", () => rotateCenter(1)
+                );
 
                 map.on("click", (event) => setCenter(event.latlng));
                 centerMarker.on("drag", (event) => setCenter(event.target.getLatLng()));
@@ -1231,9 +1374,19 @@ def get(session, plats_id: int):
             Form(
                 Input(type="hidden", name="id", value=location["id"]),
                 Label("Namn", Input(name="namn", value=location["namn"], required=True)),
-                Label("Latitud", Input(type="number", step="0.00001", name="latitud", value=f'{location["latitud"]:.5f}', required=True)),
-                Label("Longitud", Input(type="number", step="0.00001", name="longitud", value=f'{location["longitud"]:.5f}', required=True)),
-                Label("Rotation (°)", Input(type="number", name="rotation", min=0, max=359, value=location["rotation"], required=True)),
+                Label("Latitud", Input(type="number", step="0.0000001", name="latitud", value=f'{location["latitud"]:.7f}', required=True)),
+                Label("Longitud", Input(type="number", step="0.0000001", name="longitud", value=f'{location["longitud"]:.7f}', required=True)),
+                Div(
+                    Input(type="button", value="↶ −", id="rotate-counterclockwise", title="Rotera 1 grad moturs"),
+                    Input(type="button", value="+ ↷", id="rotate-clockwise", title="Rotera 1 grad medurs"),
+                    Input(type="button", value="↑ N", id="move-north", title="Flytta cirka 1 meter norrut"),
+                    Input(type="button", value="→ Ö", id="move-east", title="Flytta cirka 1 meter österut"),
+                    Input(type="button", value="↓ S", id="move-south", title="Flytta cirka 1 meter söderut"),
+                    Input(type="button", value="← V", id="move-west", title="Flytta cirka 1 meter västerut"),
+                    cls="center-arrows",
+                    aria_label="Flytta centrumpunkten",
+                ),
+                Label("Rotation (°)", Input(type="number", name="rotation", min=-90, max=90, value=location["rotation"], required=True)),
                 Label("Storlek (m)", Input(type="number", step="any", name="storlek", min=1, value=location["storlek"], required=True)),
                 Input(type="submit", value="Spara"),
                 id="location-form", method="post", action="/admin/plats/save",
