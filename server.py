@@ -1295,10 +1295,10 @@ def get(session, plats_id: int):
                     centerMarker.setLatLng(center);
                     squareCenters.clearLayers();
                     const points = centerPoints();
-                    const arrivalRadius = Number(size.value) / 16;
+                    const circleRadius = Number(size.value) / 8 * 0.47;
                     points.forEach((point) => {
                         L.circle(point.latlng, {
-                            radius: arrivalRadius,
+                            radius: circleRadius,
                             color: point.color,
                             weight: 2,
                             fillOpacity: 0
