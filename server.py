@@ -1159,7 +1159,7 @@ def get(session, plats_id: int):
                     centerMarker.setLatLng(center);
                     squareCenters.clearLayers();
                     const points = centerPoints();
-                    const arrivalRadius = Number(size.value) / 32;
+                    const arrivalRadius = Number(size.value) / 16;
                     points.forEach((point) => {
                         L.circle(point.latlng, {
                             radius: arrivalRadius,
@@ -1823,7 +1823,7 @@ def get(parti: int = 1, spelare: int = 1):
                         : `${relativeDirection > 0 ? "höger" : "vänster"} ` +
                             `${Math.abs(relativeDirection).toFixed(0)}°`;
                 const arrivalRadius =
-                    Number(boardElement.dataset.size) / 32;
+                    Number(boardElement.dataset.size) / 16;
                 updateBoardMarkers(position, targetSquare);
                 document.getElementById("navigation-status").textContent =
                     `${targetSquare} · mål ${bearing.toFixed(0)}° · ` +
