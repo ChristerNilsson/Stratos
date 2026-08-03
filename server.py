@@ -1314,6 +1314,21 @@ def get(session, plats_id: int):
                             fillOpacity: 0.25
                         }).bindTooltip(square.name).addTo(squareCenters);
                     });
+                    L.polygon(
+                        [
+                            squares[0].corners[0],
+                            squares[7].corners[1],
+                            squares[63].corners[2],
+                            squares[56].corners[3]
+                        ],
+                        {
+                            color: "#000",
+                            weight: 2,
+                            opacity: 1,
+                            fill: false,
+                            interactive: false
+                        }
+                    ).addTo(squareCenters);
                     if (fit) {
                         map.fitBounds(
                             L.latLngBounds(squares.flatMap((square) => square.corners)),
