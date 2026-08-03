@@ -1177,7 +1177,6 @@ def get(session, plats_id: int):
             """
             main { max-width: 70rem; margin: 1rem auto; padding: 0 1rem; }
             #location-map { height: min(70vh, 650px); margin: 1rem 0; }
-            #position-tools { display: flex; gap: .75rem; align-items: center; }
             form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
             label { display: grid; gap: .2rem; }
             input { padding: .45rem; }
@@ -1266,27 +1265,15 @@ def get(session, plats_id: int):
                             fillOpacity: 0.9
                         }).addTo(map).bindTooltip("Din position");
                     }
-                    document.getElementById("position-status").textContent =
-                        `Din position: ${latlng[0].toFixed(6)}, ` +
-                        `${latlng[1].toFixed(6)}`;
-                }
-
-                function positionError(error) {
-                    document.getElementById("position-status").textContent =
-                        error.code === 1
-                            ? "Tillåt platsåtkomst för att visa din position."
-                            : "Din position kunde inte hämtas.";
                 }
 
                 function startPositionTracking() {
                     if (!navigator.geolocation) {
-                        document.getElementById("position-status").textContent =
-                            "Webbläsaren saknar stöd för positionering.";
                         return;
                     }
                     navigator.geolocation.watchPosition(
                         showPosition,
-                        positionError,
+                        () => {},
                         {
                             enableHighAccuracy: true,
                             maximumAge: 1000,
@@ -1429,10 +1416,6 @@ def get(session, plats_id: int):
         Main(
             A("Till platser", href="/admin#platser"),
             H1(f'Redigera {location["namn"]}'),
-            Div(
-                Div("Hämtar din position …", id="position-status"),
-                id="position-tools",
-            ),
             Div(id="location-map"),
             Form(
                 Input(type="hidden", name="id", value=location["id"]),
@@ -1714,7 +1697,10 @@ def game_view(parti: int, spelare: int | None):
             let selectedSquare = null;
             let pendingMove = null;
             let positionWatch = null;
+            let latestPosition = null;
             let compassBearing = null;
+            let navigationDisplayTimer = null;
+            let lastNavigationDisplay = 0;
             let compassStarted = false;
             let compassStatus = "Kompass väntar";
             let board;
@@ -1736,8 +1722,16 @@ def game_view(parti: int, spelare: int | None):
             function updateCompass(event) {
                 const heading = deviceHeading(event);
                 if (heading === null) return;
-                compassBearing = heading;
+                if (compassBearing === null) {
+                    compassBearing = heading;
+                } else {
+                    const change =
+                        (heading - compassBearing + 540) % 360 - 180;
+                    compassBearing =
+                        (compassBearing + change * 0.2 + 360) % 360;
+                }
                 compassStatus = "Kompass aktiv";
+                scheduleNavigationDisplay();
             }
 
             async function startCompass() {
@@ -2049,11 +2043,16 @@ def game_view(parti: int, spelare: int | None):
                     navigator.geolocation.clearWatch(positionWatch);
                     positionWatch = null;
                 }
+                if (navigationDisplayTimer !== null) {
+                    window.clearTimeout(navigationDisplayTimer);
+                    navigationDisplayTimer = null;
+                }
+                latestPosition = null;
                 document.getElementById("player-marker").hidden = true;
                 updateTargetMarkers([]);
             }
 
-            function updateNavigation(position) {
+            function renderNavigation(position) {
                 if (!pendingMove) return;
                 const targets = pendingMove.remaining.map((square) => {
                     const target = squareCenter(square);
@@ -2077,20 +2076,44 @@ def game_view(parti: int, spelare: int | None):
                 );
                 const relativeDirection = compassBearing === null
                     ? null
-                    : (bearing - compassBearing + 540) % 360 - 180;
+                    : (compassBearing - bearing + 540) % 360 - 180;
                 const relativeDegrees = relativeDirection === null
                     ? null
                     : Math.round(relativeDirection);
                 const directionText = relativeDirection === null
                     ? "–"
                     : `${relativeDegrees === 0 ? 0 : relativeDegrees}°`;
-                const arrivalRadius =
-                    Number(boardElement.dataset.size) / 2;
                 updateBoardMarkers(position, pendingMove.remaining);
                 document.getElementById("navigation-status").textContent =
                     `${pendingMove.remaining.join(" · ")} · ` +
                     `${bearing.toFixed(0)}° · ${nearest.distance.toFixed(0)} m · ` +
                     `${directionText}`;
+                lastNavigationDisplay = performance.now();
+                return targets;
+            }
+
+            function scheduleNavigationDisplay() {
+                if (!pendingMove || !latestPosition || navigationDisplayTimer !== null) {
+                    return;
+                }
+                const delay = Math.max(
+                    0,
+                    100 - (performance.now() - lastNavigationDisplay)
+                );
+                navigationDisplayTimer = window.setTimeout(() => {
+                    navigationDisplayTimer = null;
+                    if (pendingMove && latestPosition) {
+                        renderNavigation(latestPosition);
+                    }
+                }, delay);
+            }
+
+            function updateNavigation(position) {
+                if (!pendingMove) return;
+                latestPosition = position;
+                const targets = renderNavigation(position);
+                const arrivalRadius =
+                    Number(boardElement.dataset.size) / 2;
 
                 const arrived = targets.reduce((best, candidate) => {
                     if (candidate.distance > arrivalRadius) return best;
